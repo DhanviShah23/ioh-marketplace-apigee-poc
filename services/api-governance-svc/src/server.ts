@@ -156,7 +156,7 @@ export function buildServer(pool: pg.Pool, apigee: ApigeeClient, config: Config)
       return reply.code(409).send({ error: `no deployed proxy found for api_id(s): ${missing.join(", ")}` });
     }
 
-    const productName = `bundle-${body.bundle_id}-${body.tier_name}`
+    const productName = `ioh-marketplace-${body.bundle_id}-${body.tier_name}-product`
       .toLowerCase()
       .replace(/[^a-z0-9-]+/g, "-");
 
