@@ -1,0 +1,61 @@
+name: Post-merge Registration (real-time Apigee X proxy creation)
+
+# DESIGN.md §4/§9: on merge to main, notify api-governance-svc for every
+# changed spec so it can create/deploy the real Apigee X proxy immediately.
+#
+# GOVERNANCE_SVC_URL must point at a reachable api-governance-svc deployment
+# (e.g. Cloud Run) — configure it as a repository/environment variable. If
+# unset, the registration step runs in dry-run mode (logs the payload, does
+# not fail the workflow) so this file is safe to merge before that
+# deployment exists.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ioh/**"
+      - "vendor/**"
+
+concurrency:
+  group: post-merge-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  register-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm ci
+
+      - name: Detect specs changed by this push
+        id: detect
+        run: node scripts/detect-changed-specs.mjs "${{ github.event.before }}" "${{ github.sha }}"
+
+      - name: Register each changed spec with api-governance-svc
+        if: steps.detect.outputs.has_specs == 'true'
+        env:
+          GOVERNANCE_SVC_URL: ${{ vars.GOVERNANCE_SVC_URL }}
+        run: |
+          echo '${{ steps.detect.outputs.specs }}' | node -e '
+            const specs = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const { execFileSync } = require("child_process");
+            for (const { path } of specs) {
+              console.log(`--- registering ${path} ---`);
+              execFileSync("node", [
+                "scripts/register-api-asset-version.mjs",
+                "--spec", path,
+                "--commit", process.env.GITHUB_SHA,
+                "--repo", process.env.GITHUB_REPOSITORY,
+                "--actor", "${{ github.actor }}@users.noreply.github.com",
+              ], { stdio: "inherit" });
+            }
+          '

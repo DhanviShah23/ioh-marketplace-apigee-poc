@@ -24,13 +24,72 @@ design: [`DESIGN.md`](./DESIGN.md).
 - Require review from someone other than the last pusher (GitHub's built-in same-author restriction)
 - Squash-merge only (recommended in DESIGN.md §4, so the merge commit is byte-identical to the CI-validated PR head)
 
+## Services (`api-governance-svc`, `commercial-catalog-svc`)
+
+Both are real, running Node.js/TypeScript/Fastify services under `services/`,
+backed by Postgres, with **live** Apigee X integration — verified end to end
+against the real `searceapigeex` org / `dev1` environment:
+
+- **`api-governance-svc`** (`services/api-governance-svc`) — `POST /api-asset-versions`
+  registers a spec version and, in the same call, builds a real Apigee proxy
+  bundle (VerifyAPIKey + Quota policies, target from `servers[].url`),
+  imports it, and deploys it to `dev1` (`override=true`, so re-registering
+  the same `vN` replaces the previously deployed revision). `POST
+  /apigee-products` creates a real Apigee API product for one tier, with
+  `quota`/`quotaInterval`/`quotaTimeUnit` set from the tier — the running
+  proxy's `Quota` policy reads these back at request time via Apigee's
+  standard `verifyapikey.*.apiproduct.developer.quota.*` flow variables, so
+  a tier's quota genuinely flows from the bundle into enforcement on the
+  proxy. All Apigee calls live behind this service — `commercial-catalog-svc`
+  never calls Apigee directly (per DESIGN.md §7's boundary).
+- **`commercial-catalog-svc`** (`services/commercial-catalog-svc`) — bundle
+  creation, `offer_version` tiers (with a `price` column, per the confirmed
+  "field only, no billing logic" decision), the `DRAFT → PENDING_APPROVAL →
+  APPROVED/REJECTED` approval loop (append-only `bundle_approval` rows, fixed
+  `product_version_id` through the loop), and subscriptions. **The moment a
+  bundle flips to `APPROVED`, it calls `api-governance-svc` once per
+  `offer_version` (tier) to create that tier's Apigee product in real time**
+  — this was a confirmed change from DESIGN.md §9's original per-subscription
+  timing. Subscriptions write `subscription` + `outbox_event` in one
+  transaction; a poller (`src/outboxWorker.ts`) delivers pending events
+  independently of that transaction's fate (verified: `PENDING` immediately
+  after commit, `SENT` a few seconds later via the poller).
+
+**Auth caveat (read before deploying):** the client authenticates by
+preferring the active `gcloud auth print-access-token` identity over ADC —
+on this dev machine the well-known ADC file belonged to a stale, wrong
+Google account, while the `gcloud` CLI session was the correctly-authorized
+one. For a real deployment (e.g. Cloud Run), swap to a dedicated service
+account key / Workload Identity instead of relying on either personal
+credential path.
+
+**Run locally:**
+```bash
+docker compose up -d --build   # postgres-governance:5533, postgres-catalog:5534,
+                                # api-governance-svc:4101, commercial-catalog-svc:4102
+```
+The compose file mounts this host's ADC file as a fallback; if your Apigee
+IAM identity differs from your ADC identity (as it did here), run the
+services directly on the host instead (`npm run start` in each
+`services/*` directory, with `DATABASE_URL` pointed at `localhost:5533` /
+`localhost:5534`) so the client can shell out to the correctly-authenticated
+`gcloud` CLI.
+
+**Real-time proxy creation on merge** (`.github/workflows/post-merge.yml`)
+calls `api-governance-svc` via a `GOVERNANCE_SVC_URL` repo/environment
+variable — **unset by default**. A GitHub-hosted Actions runner can only
+reach a *publicly deployed* `api-governance-svc` (e.g. on Cloud Run), which
+this build does not provision — that's a real, billable, internet-facing
+deployment decision left for you to make explicitly. Until `GOVERNANCE_SVC_URL`
+is set, the workflow logs the registration payload in dry-run mode instead
+of failing.
+
 ## Not yet implemented
 
-Everything in DESIGN.md §4 onward — the post-merge workflow (GCS mirroring,
-checksum verification, `ApiAssetVersion` registration in `api-governance-svc`),
-`api-governance-svc`/`commercial-catalog-svc` themselves, Apigee X proxy
-creation, and the productization/subscription/outbox flow. This scaffold
-covers the Git layout, CODEOWNERS, and pre-merge CI only.
+GCS mirroring/checksum-verification-against-GCS from DESIGN.md §4 (the
+services compute and store the checksum, but don't yet mirror the spec to
+GCS), the `attach-app`-to-product step's full KYC/KYB-backed app model, and
+an actual public deployment of either service.
 
 ## CODEOWNERS placeholders
 

@@ -1,0 +1,78 @@
+name: ioh-marketplace-apigee-poc
+
+# Ports/names are deliberately distinct from any other "ioh"-named compose
+# stack that might already be running on this machine (see README.md).
+
+services:
+  postgres-governance:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: iohgov
+      POSTGRES_PASSWORD: iohgov_dev_password
+      POSTGRES_DB: api_governance
+    ports:
+      - "5533:5432"
+    volumes:
+      - iohgov_postgres_governance_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iohgov -d api_governance"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-catalog:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: iohcat
+      POSTGRES_PASSWORD: iohcat_dev_password
+      POSTGRES_DB: commercial_catalog
+    ports:
+      - "5534:5432"
+    volumes:
+      - iohgov_postgres_catalog_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iohcat -d commercial_catalog"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api-governance-svc:
+    build: ./services/api-governance-svc
+    depends_on:
+      postgres-governance:
+        condition: service_healthy
+    environment:
+      PORT: "4101"
+      DATABASE_URL: postgres://iohgov:iohgov_dev_password@postgres-governance:5432/api_governance
+      APIGEE_ORG: searceapigeex
+      APIGEE_ENV: dev1
+      USE_FAKE_APIGEE_CLIENT: "false"
+      # This dev machine has no service-account key yet, so we mount the
+      # already-issued Application Default Credentials (authorized_user
+      # type) instead — google-auth-library refreshes tokens from these
+      # directly, no gcloud binary needed in the image. Swap to a real
+      # service-account key + Workload Identity for an actual deployment.
+      GOOGLE_APPLICATION_CREDENTIALS: /var/secrets/adc.json
+    volumes:
+      - ${HOME}/.config/gcloud/application_default_credentials.json:/var/secrets/adc.json:ro
+    ports:
+      - "4101:4101"
+
+  commercial-catalog-svc:
+    build: ./services/commercial-catalog-svc
+    depends_on:
+      postgres-catalog:
+        condition: service_healthy
+      api-governance-svc:
+        condition: service_started
+    environment:
+      PORT: "4102"
+      DATABASE_URL: postgres://iohcat:iohcat_dev_password@postgres-catalog:5432/commercial_catalog
+      GOVERNANCE_SVC_URL: http://api-governance-svc:4101
+      OUTBOX_POLL_INTERVAL_MS: "3000"
+    ports:
+      - "4102:4102"
+
+volumes:
+  iohgov_postgres_governance_data:
+  iohgov_postgres_catalog_data:
