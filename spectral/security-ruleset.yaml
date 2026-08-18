@@ -1,0 +1,39 @@
+# Job 4: validate-security (DESIGN.md §3)
+# securitySchemes structurally valid, every operation declares security,
+# no credentials in query params, required scopes present.
+extends: [["spectral:oas", "off"]]
+rules:
+  ioh-security-schemes-required:
+    description: at least one securityScheme must be defined under components.
+    given: "$.components"
+    severity: error
+    then:
+      field: securitySchemes
+      function: truthy
+
+  ioh-operation-security-required:
+    description: every operation must declare a non-empty security requirement.
+    given: "$.paths[*][get,put,post,delete,patch,options,head]"
+    severity: error
+    then:
+      field: security
+      function: length
+      functionOptions:
+        min: 1
+
+  ioh-no-credentials-in-query:
+    description: query parameters must not carry credentials (api keys, tokens, passwords).
+    given: "$.paths[*][get,put,post,delete,patch,options,head].parameters[?(@.in=='query')].name"
+    severity: error
+    then:
+      function: pattern
+      functionOptions:
+        notMatch: "(?i)^(api[_-]?key|token|secret|password|access[_-]?token)$"
+
+  ioh-oauth2-scopes-required:
+    description: oauth2 security schemes must define at least one scope.
+    given: "$.components.securitySchemes[?(@.type=='oauth2')].flows[*]"
+    severity: error
+    then:
+      field: scopes
+      function: truthy

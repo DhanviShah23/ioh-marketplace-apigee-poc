@@ -1,0 +1,107 @@
+openapi: 3.1.0
+info:
+  title: Wallet Transfer API
+  version: 1.0.0
+  x-ioh-api-id: payments-wallet-transfer
+  description: >-
+    Initiates and tracks transfers of funds between IOH wallet accounts.
+  contact:
+    name: Payments Platform
+    email: payments-platform@ioh.example.com
+servers:
+  - url: https://api.ioh.example.com/payments/v1
+    description: Production
+tags:
+  - name: wallet-transfers
+    description: Operations for creating and inspecting wallet transfers
+paths:
+  /wallet-transfers:
+    post:
+      operationId: createWalletTransfer
+      summary: Create a wallet transfer
+      description: >-
+        Initiates a transfer of funds from one IOH wallet account to another.
+      tags:
+        - wallet-transfers
+      security:
+        - oauth2: [wallet:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WalletTransferRequest"
+      responses:
+        "201":
+          description: Transfer accepted and queued for processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletTransfer"
+        "400":
+          description: Invalid request
+  /wallet-transfers/{transferId}:
+    get:
+      operationId: getWalletTransfer
+      summary: Get a wallet transfer by id
+      description: Retrieves the current status of a previously created wallet transfer.
+      tags:
+        - wallet-transfers
+      security:
+        - oauth2: [wallet:read]
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Transfer found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletTransfer"
+        "404":
+          description: Transfer not found
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.ioh.example.com/oauth2/token
+          scopes:
+            "wallet:read": Read wallet transfer status
+            "wallet:write": Create wallet transfers
+  schemas:
+    WalletTransferRequest:
+      type: object
+      required: [fromAccountId, toAccountId, amount, currency]
+      properties:
+        fromAccountId:
+          type: string
+        toAccountId:
+          type: string
+        amount:
+          type: number
+          minimum: 0.01
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+    WalletTransfer:
+      type: object
+      properties:
+        transferId:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, FAILED]
+        fromAccountId:
+          type: string
+        toAccountId:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string

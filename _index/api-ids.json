@@ -1,0 +1,10 @@
+{
+  "apis": [
+    {
+      "api_id": "payments-wallet-transfer",
+      "namespace": "payments",
+      "origin": "IOH",
+      "path": "ioh/apis/payments-wallet-transfer"
+    }
+  ]
+}

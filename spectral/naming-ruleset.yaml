@@ -1,0 +1,30 @@
+# Job 3: validate-naming (DESIGN.md §3)
+# Path / operationId / resource naming conventions.
+extends: [["spectral:oas", "off"]]
+rules:
+  ioh-operationid-camel-case:
+    description: operationId must be camelCase.
+    given: "$.paths[*][get,put,post,delete,patch,options,head].operationId"
+    severity: error
+    then:
+      function: casing
+      functionOptions:
+        type: camel
+
+  ioh-path-segments-kebab-case:
+    description: literal path segments must be lowercase kebab-case; path params use {camelCase}.
+    given: "$.paths[*]~"
+    severity: error
+    then:
+      function: pattern
+      functionOptions:
+        match: "^(/[a-z0-9]+(-[a-z0-9]+)*|/\\{[a-zA-Z0-9_]+\\})+$"
+
+  ioh-no-verbs-in-path:
+    description: paths should name resources, not actions (avoid /getUser, /createOrder).
+    given: "$.paths[*]~"
+    severity: warn
+    then:
+      function: pattern
+      functionOptions:
+        notMatch: "/(get|create|update|delete|remove|fetch|list)[A-Za-z-]*"

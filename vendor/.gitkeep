@@ -1,0 +1,2 @@
+# Keeps the empty vendor/ tree tracked by git.
+# Vendor submissions live at vendor/{vendor-org-id}/apis/{api-id}/... (DESIGN.md §2).

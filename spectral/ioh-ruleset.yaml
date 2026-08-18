@@ -1,0 +1,48 @@
+# Job 2: lint-ioh-conventions (DESIGN.md §3)
+# General contract-quality rules: required metadata, description completeness,
+# tag usage.
+extends: [["spectral:oas", "off"]]
+rules:
+  ioh-info-description-required:
+    description: info.description must be present and describe the API's purpose.
+    given: "$.info"
+    severity: error
+    then:
+      field: description
+      function: truthy
+
+  ioh-info-contact-required:
+    description: info.contact must be present so the owning team can be reached.
+    given: "$.info"
+    severity: error
+    then:
+      field: contact
+      function: truthy
+
+  ioh-api-id-present:
+    description: info.x-ioh-api-id must be present and match the api-id format (DESIGN.md §1).
+    given: "$.info"
+    severity: error
+    then:
+      field: x-ioh-api-id
+      function: pattern
+      functionOptions:
+        match: "^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$"
+
+  ioh-operation-description-required:
+    description: every operation must have a description.
+    given: "$.paths[*][get,put,post,delete,patch,options,head]"
+    severity: error
+    then:
+      field: description
+      function: truthy
+
+  ioh-operation-tags-required:
+    description: every operation must declare at least one tag.
+    given: "$.paths[*][get,put,post,delete,patch,options,head]"
+    severity: error
+    then:
+      field: tags
+      function: length
+      functionOptions:
+        min: 1

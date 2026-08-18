@@ -1,0 +1,200 @@
+name: Pre-merge API Governance Checks
+
+# DESIGN.md §3 — 8 required checks. Jobs 1-7 below; job 8 (branch-protection
+# gate) is a repo setting, not a workflow job — see README.md for the exact
+# required-status-checks list to configure.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "ioh/**"
+      - "vendor/**"
+
+concurrency:
+  group: pre-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changed-specs:
+    runs-on: ubuntu-latest
+    outputs:
+      specs: ${{ steps.detect.outputs.specs }}
+      deleted: ${{ steps.detect.outputs.deleted }}
+      has_specs: ${{ steps.detect.outputs.has_specs }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - id: detect
+        run: node scripts/detect-changed-specs.mjs "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
+
+  # Job 1
+  validate-oas-structure:
+    needs: changed-specs
+    if: needs.changed-specs.outputs.has_specs == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        spec: ${{ fromJson(needs.changed-specs.outputs.specs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npx @redocly/cli lint "${{ matrix.spec.path }}"
+
+  # Job 2
+  lint-ioh-conventions:
+    needs: changed-specs
+    if: needs.changed-specs.outputs.has_specs == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        spec: ${{ fromJson(needs.changed-specs.outputs.specs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npx spectral lint --ruleset spectral/ioh-ruleset.yaml "${{ matrix.spec.path }}"
+
+  # Job 3
+  validate-naming:
+    needs: changed-specs
+    if: needs.changed-specs.outputs.has_specs == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        spec: ${{ fromJson(needs.changed-specs.outputs.specs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npx spectral lint --ruleset spectral/naming-ruleset.yaml "${{ matrix.spec.path }}"
+
+  # Job 4
+  validate-security:
+    needs: changed-specs
+    if: needs.changed-specs.outputs.has_specs == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        spec: ${{ fromJson(needs.changed-specs.outputs.specs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npx spectral lint --ruleset spectral/security-ruleset.yaml "${{ matrix.spec.path }}"
+
+  # Job 5 — also covers §1's api-id format/uniqueness/immutability checks,
+  # since x-ioh-api-id<->path agreement already lives here per the design.
+  validate-versioning:
+    needs: changed-specs
+    if: needs.changed-specs.outputs.has_specs == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        spec: ${{ fromJson(needs.changed-specs.outputs.specs) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: node scripts/validate-versioning.mjs --changed "${{ matrix.spec.path }}"
+
+  validate-immutability:
+    needs: changed-specs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: node scripts/validate-versioning.mjs --check-immutability '${{ needs.changed-specs.outputs.deleted }}'
+
+  # Job 6
+  compatibility-check:
+    needs: changed-specs
+    if: needs.changed-specs.outputs.has_specs == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        spec: ${{ fromJson(needs.changed-specs.outputs.specs) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for a predecessor version of this file
+        id: predecessor
+        run: |
+          if git cat-file -e "${{ github.event.pull_request.base.sha }}:${{ matrix.spec.path }}" 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Extract predecessor spec
+        if: steps.predecessor.outputs.exists == 'true'
+        run: git show "${{ github.event.pull_request.base.sha }}:${{ matrix.spec.path }}" > /tmp/predecessor.yaml
+      - name: Fail on breaking changes vs predecessor
+        if: steps.predecessor.outputs.exists == 'true'
+        uses: oasdiff/oasdiff-action/breaking@main
+        with:
+          base: /tmp/predecessor.yaml
+          revision: ${{ matrix.spec.path }}
+          fail-on-diff: true
+      - name: No predecessor — initial version, nothing to diff
+        if: steps.predecessor.outputs.exists == 'false'
+        run: echo "No predecessor spec at this path yet; treated as an initial version. Compatibility check skipped."
+
+  # Job 7
+  record-ci-evidence:
+    needs:
+      - changed-specs
+      - validate-oas-structure
+      - lint-ioh-conventions
+      - validate-naming
+      - validate-security
+      - validate-versioning
+      - validate-immutability
+      - compatibility-check
+    if: always() && needs.changed-specs.outputs.has_specs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: |
+          node scripts/record-ci-evidence.mjs \
+            --result "validate-oas-structure=${{ needs.validate-oas-structure.result }}" \
+            --result "lint-ioh-conventions=${{ needs.lint-ioh-conventions.result }}" \
+            --result "validate-naming=${{ needs.validate-naming.result }}" \
+            --result "validate-security=${{ needs.validate-security.result }}" \
+            --result "validate-versioning=${{ needs.validate-versioning.result }}" \
+            --result "validate-immutability=${{ needs.validate-immutability.result }}" \
+            --result "compatibility-check=${{ needs.compatibility-check.result }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ci-evidence-${{ github.sha }}
+          path: evidence.json
+      - name: Fail the gate if any upstream check failed
+        if: contains(needs.*.result, 'failure')
+        run: exit 1

@@ -1,0 +1,11 @@
+api_id: payments-wallet-transfer
+namespace: payments
+origin: IOH
+owning_domain: payments
+vendor_org_id: null
+lifecycle_status: ACTIVE
+contact:
+  team: Payments Platform
+  email: payments-platform@ioh.example.com
+created_at: "2026-08-18"
+created_by: dhanvi.shah@searce.com

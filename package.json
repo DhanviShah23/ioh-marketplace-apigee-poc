@@ -1,0 +1,26 @@
+{
+  "name": "ioh-marketplace-apigee-poc",
+  "private": true,
+  "version": "0.1.0",
+  "description": "API onboarding, governance & productization pipeline - spec repo and pre-merge CI gates",
+  "type": "module",
+  "scripts": {
+    "lint:oas": "redocly lint",
+    "lint:conventions": "spectral lint --ruleset spectral/ioh-ruleset.yaml",
+    "lint:naming": "spectral lint --ruleset spectral/naming-ruleset.yaml",
+    "lint:security": "spectral lint --ruleset spectral/security-ruleset.yaml",
+    "validate:versioning": "node scripts/validate-versioning.mjs",
+    "detect:changed": "node scripts/detect-changed-specs.mjs",
+    "index:generate": "node scripts/generate-api-id-index.mjs",
+    "evidence:record": "node scripts/record-ci-evidence.mjs"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^1.25.0",
+    "@stoplight/spectral-cli": "^6.11.0"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "semver": "^7.6.3",
+    "glob": "^11.0.0"
+  }
+}
