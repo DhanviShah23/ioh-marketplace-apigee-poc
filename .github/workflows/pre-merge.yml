@@ -154,12 +154,15 @@ jobs:
           fi
       - name: Extract predecessor spec
         if: steps.predecessor.outputs.exists == 'true'
-        run: git show "${{ github.event.pull_request.base.sha }}:${{ matrix.spec.path }}" > /tmp/predecessor.yaml
+        # oasdiff/oasdiff-action runs as a Docker container action: only
+        # $GITHUB_WORKSPACE is mounted into it by default, not the runner's
+        # /tmp — so this has to live inside the workspace to be visible.
+        run: git show "${{ github.event.pull_request.base.sha }}:${{ matrix.spec.path }}" > predecessor.yaml
       - name: Fail on breaking changes vs predecessor
         if: steps.predecessor.outputs.exists == 'true'
         uses: oasdiff/oasdiff-action/breaking@main
         with:
-          base: /tmp/predecessor.yaml
+          base: predecessor.yaml
           revision: ${{ matrix.spec.path }}
           fail-on-diff: true
       - name: No predecessor — initial version, nothing to diff
