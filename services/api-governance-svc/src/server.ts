@@ -196,9 +196,9 @@ export function buildServer(pool: pg.Pool, apigee: ApigeeClient, config: Config)
 
   app.post("/apigee-products/:id/attach-app", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const body = req.body as { org_id: string; app_id: string };
-    if (!body.org_id || !body.app_id) {
-      return reply.code(400).send({ error: "org_id and app_id are required" });
+    const body = req.body as { developer_email: string; app_name: string };
+    if (!body.developer_email || !body.app_name) {
+      return reply.code(400).send({ error: "developer_email and app_name are required" });
     }
 
     const product = await pool.query(`SELECT * FROM apigee_product WHERE id = $1`, [id]);
@@ -206,8 +206,8 @@ export function buildServer(pool: pg.Pool, apigee: ApigeeClient, config: Config)
 
     try {
       const attached = await apigee.attachAppToProduct({
-        orgId: body.org_id,
-        appId: body.app_id,
+        developerEmail: body.developer_email,
+        appName: body.app_name,
         productName: product.rows[0].apigee_product_name,
       });
       return reply.code(200).send({ attached });

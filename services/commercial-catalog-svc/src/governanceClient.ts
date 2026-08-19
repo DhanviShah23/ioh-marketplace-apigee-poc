@@ -27,11 +27,11 @@ export async function createApigeeProduct(config: Config, req: CreateProductRequ
   return body;
 }
 
-export async function attachAppToProduct(config: Config, apigeeProductId: number, orgId: string, appId: string): Promise<unknown> {
+export async function attachAppToProduct(config: Config, apigeeProductId: number, developerEmail: string, appName: string): Promise<unknown> {
   const res = await fetch(`${config.governanceSvcUrl}/apigee-products/${apigeeProductId}/attach-app`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ org_id: orgId, app_id: appId }),
+    body: JSON.stringify({ developer_email: developerEmail, app_name: appName }),
   });
   const body = await res.json();
   if (!res.ok) {

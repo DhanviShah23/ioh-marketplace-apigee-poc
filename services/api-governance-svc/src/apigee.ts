@@ -51,8 +51,8 @@ export interface ApigeeClient {
   }): Promise<ProductCreateResult>;
 
   attachAppToProduct(opts: {
-    orgId: string;
-    appId: string;
+    developerEmail: string;
+    appName: string;
     productName: string;
   }): Promise<AppAttachResult>;
 }
@@ -232,15 +232,15 @@ export function createRealApigeeClient(config: Config): ApigeeClient {
       return { apigeeProductName: opts.productName, status: "CREATED" };
     },
 
-    // DESIGN.md's subscriber_app is a thin upstream reference (app_id, org_id)
-    // with no real KYC/KYB-backed Apigee developer identity behind it yet.
-    // This synthesizes a developer/app under Apigee 1:1 from those ids so
-    // the attach step is a real, working call rather than a stub — swap in
-    // the real developer email / app name once that upstream system exists.
+    // Uses the real developer email / app name you registered for this
+    // subscriber (commercial-catalog-svc's subscriber_app row) — created
+    // manually in Apigee ahead of time. If they don't exist yet, they're
+    // created under that exact identity as a safety net, but the normal
+    // path is: attach to the app that's already there.
     async attachAppToProduct(opts) {
       const token = await getAccessToken();
-      const developerEmail = `${sanitizeIdentifier(opts.orgId)}@ioh-marketplace-subscribers.local`;
-      const appName = sanitizeIdentifier(opts.appId);
+      const developerEmail = opts.developerEmail;
+      const appName = opts.appName;
       const org = config.apigeeOrg;
 
       const devRes = await fetch(`${MANAGEMENT_API}/organizations/${org}/developers/${encodeURIComponent(developerEmail)}`, {
@@ -254,7 +254,7 @@ export function createRealApigeeClient(config: Config): ApigeeClient {
             email: developerEmail,
             firstName: "IOH",
             lastName: "Subscriber",
-            userName: opts.orgId,
+            userName: sanitizeIdentifier(developerEmail.split("@")[0]),
           }),
         });
         if (!createDevRes.ok) {
@@ -286,7 +286,9 @@ export function createRealApigeeClient(config: Config): ApigeeClient {
 
       const app = (await appRes.json()) as { credentials: Array<{ consumerKey: string; apiProducts: Array<{ apiproduct: string }> }> };
       const key = app.credentials[0];
-      const existingProducts = key.apiProducts.map((p) => p.apiproduct);
+      // Apigee omits apiProducts from the credential entirely when the app
+      // has none yet (rather than returning []), e.g. a freshly-created app.
+      const existingProducts = (key.apiProducts ?? []).map((p) => p.apiproduct);
       const mergedProducts = existingProducts.includes(opts.productName) ? existingProducts : [...existingProducts, opts.productName];
 
       const updateKeyRes = await fetch(
@@ -321,8 +323,8 @@ export function createFakeApigeeClient(): ApigeeClient {
     },
     async attachAppToProduct(opts) {
       return {
-        developerEmail: `${sanitizeIdentifier(opts.orgId)}@ioh-marketplace-subscribers.local`,
-        appName: sanitizeIdentifier(opts.appId),
+        developerEmail: opts.developerEmail,
+        appName: opts.appName,
         consumerKey: "fake-consumer-key",
         status: "ATTACHED",
       };

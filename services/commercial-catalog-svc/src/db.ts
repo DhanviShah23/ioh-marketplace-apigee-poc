@@ -69,10 +69,16 @@ CREATE TABLE IF NOT EXISTS restricted_access_grant (
 );
 
 CREATE TABLE IF NOT EXISTS subscriber_app (
-  app_id       text PRIMARY KEY,
-  org_id       text NOT NULL,
-  created_at   timestamptz NOT NULL DEFAULT now()
+  app_id                  text PRIMARY KEY,
+  org_id                  text NOT NULL,
+  apigee_developer_email  text,
+  apigee_app_name         text,
+  created_at              timestamptz NOT NULL DEFAULT now()
 );
+-- CREATE TABLE IF NOT EXISTS won't add columns to an already-existing
+-- table, so these are explicit and idempotent for the already-running DB.
+ALTER TABLE subscriber_app ADD COLUMN IF NOT EXISTS apigee_developer_email text;
+ALTER TABLE subscriber_app ADD COLUMN IF NOT EXISTS apigee_app_name text;
 
 CREATE TABLE IF NOT EXISTS subscription (
   id                   bigserial PRIMARY KEY,

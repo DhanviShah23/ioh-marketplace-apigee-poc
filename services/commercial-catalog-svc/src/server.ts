@@ -8,6 +8,24 @@ export function buildServer(pool: pg.Pool, config: Config) {
 
   app.get("/health", async () => ({ status: "ok" }));
 
+  // Registers the real Apigee developer/app you created manually for this
+  // org_id/app_id, so future subscriptions attach products to that exact
+  // app rather than a synthesized one. Call this once per app.
+  app.post("/subscriber-apps", async (req, reply) => {
+    const body = req.body as { app_id: string; org_id: string; apigee_developer_email: string; apigee_app_name: string };
+    if (!body.app_id || !body.org_id || !body.apigee_developer_email || !body.apigee_app_name) {
+      return reply.code(400).send({ error: "app_id, org_id, apigee_developer_email, apigee_app_name are required" });
+    }
+    const inserted = await pool.query(
+      `INSERT INTO subscriber_app (app_id, org_id, apigee_developer_email, apigee_app_name)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (app_id) DO UPDATE SET org_id=$2, apigee_developer_email=$3, apigee_app_name=$4
+       RETURNING *`,
+      [body.app_id, body.org_id, body.apigee_developer_email, body.apigee_app_name]
+    );
+    return reply.code(201).send({ subscriber_app: inserted.rows[0] });
+  });
+
   // Local read-through cache of a governance-approved asset (DESIGN.md §8's
   // api_asset_ref). Upserts from api-governance-svc's registry on demand.
   app.post("/api-asset-refs/sync", async (req, reply) => {
@@ -157,13 +175,14 @@ export function buildServer(pool: pg.Pool, config: Config) {
     const pv = await latestProductVersion(pool, bundleId);
     if (!pv || !pv.published_at) return reply.code(409).send({ error: "bundle has no published, approved version" });
 
+    const subscriberApp = (await pool.query(`SELECT * FROM subscriber_app WHERE app_id = $1`, [body.app_id])).rows[0];
+    if (!subscriberApp || !subscriberApp.apigee_developer_email || !subscriberApp.apigee_app_name) {
+      return reply.code(409).send({ error: `app_id "${body.app_id}" is not registered — call POST /subscriber-apps first with its real Apigee developer email and app name` });
+    }
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await client.query(
-        `INSERT INTO subscriber_app (app_id, org_id) VALUES ($1,$2) ON CONFLICT (app_id) DO NOTHING`,
-        [body.app_id, body.org_id]
-      );
       const sub = await client.query(
         `INSERT INTO subscription (org_id, bundle_id, product_version_id, offer_version_id, app_id, status)
          VALUES ($1,$2,$3,$4,$5,'PENDING') RETURNING *`,
@@ -195,7 +214,7 @@ export function buildServer(pool: pg.Pool, config: Config) {
         });
         await pool.query(`UPDATE subscription SET status = 'PRODUCT_CREATED' WHERE id = $1`, [subscription.id]);
 
-        await attachAppToProduct(config, productResp.apigee_product.id, body.org_id, body.app_id);
+        await attachAppToProduct(config, productResp.apigee_product.id, subscriberApp.apigee_developer_email, subscriberApp.apigee_app_name);
         const activated = await pool.query(`UPDATE subscription SET status = 'ACTIVE' WHERE id = $1 RETURNING *`, [subscription.id]);
         subscription = activated.rows[0];
       } catch (err) {
