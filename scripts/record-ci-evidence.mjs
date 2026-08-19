@@ -24,7 +24,9 @@ const evidence = {
     : null,
   recorded_at: new Date().toISOString(),
   checks,
-  outcome: Object.values(checks).every((r) => r === "success") ? "PASSED" : "FAILED",
+  // "skipped" is expected and fine — e.g. a PR that touches no spec files
+  // skips jobs 1-6 entirely. Only an explicit "failure" fails this check.
+  outcome: Object.values(checks).every((r) => r === "success" || r === "skipped") ? "PASSED" : "FAILED",
 };
 
 writeFileSync("evidence.json", JSON.stringify(evidence, null, 2) + "\n");

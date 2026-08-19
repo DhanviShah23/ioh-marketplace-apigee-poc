@@ -18,11 +18,11 @@ design: [`DESIGN.md`](./DESIGN.md).
   - plus `validate-immutability`, enforcing §1.3 (no deleting an existing `apis/{api-id}/` path)
 - One worked example: `ioh/apis/payments-wallet-transfer/v1/openapi.yaml`.
 
-**Job 8 (branch-protection gate) is a repo setting, not code.** After pushing this scaffold, configure on GitHub (Settings → Branches → `main`):
-- Require status checks: `validate-oas-structure`, `lint-ioh-conventions`, `validate-naming`, `validate-security`, `validate-versioning`, `validate-immutability`, `compatibility-check`, `record-ci-evidence`
-- Require a pull request before merging, with review from Code Owners
-- Require review from someone other than the last pusher (GitHub's built-in same-author restriction)
-- Squash-merge only (recommended in DESIGN.md §4, so the merge commit is byte-identical to the CI-validated PR head)
+**Job 8 (branch-protection gate) is a repo setting, not code** — configured directly via the GitHub API on this repo:
+- Required status checks: `record-ci-evidence`, `validate-immutability`. **Not** the 6 matrix jobs (`validate-oas-structure`, `lint-ioh-conventions`, `validate-naming`, `validate-security`, `validate-versioning`, `compatibility-check`) — their check-run names vary per spec path (matrix expansion), so they can't be pinned as fixed required-check names. `record-ci-evidence` depends on all of them and fails if any did, so requiring it (+ the non-matrix `validate-immutability`) covers the same ground with stable names.
+- `pre-merge.yml` intentionally has **no `paths:` filter** on its trigger — a required check that never queues (because the workflow didn't fire) permanently blocks merging. `changed-specs`/`has_specs` decides internally whether there's anything to actually check; `record-ci-evidence` treats "skipped" as a pass, not a failure.
+- Require a pull request before merging (1 approving review) is **not yet enabled** — this repo has one collaborator (`@DhanviShah23`), and a solo owner can never approve their own PR, which would deadlock every PR. Add a second collaborator, point `.github/CODEOWNERS` at them, then turn this on.
+- Squash-merge only is enabled at the repo level (DESIGN.md §4, so the merge commit is byte-identical to the CI-validated PR head).
 
 ## Services (`api-governance-svc`, `commercial-catalog-svc`)
 

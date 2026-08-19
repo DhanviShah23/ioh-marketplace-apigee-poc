@@ -7,9 +7,12 @@ name: Pre-merge API Governance Checks
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "ioh/**"
-      - "vendor/**"
+    # No `paths:` filter here on purpose: required status checks need a
+    # stable, always-reported result. A path filter would make this
+    # workflow (and therefore its required checks) never even queue for a
+    # PR that doesn't touch ioh/**/vendor/**, permanently blocking merge.
+    # changed-specs below decides internally whether there's anything to
+    # actually check.
 
 concurrency:
   group: pre-merge-${{ github.event.pull_request.number }}
@@ -174,7 +177,7 @@ jobs:
       - validate-versioning
       - validate-immutability
       - compatibility-check
-    if: always() && needs.changed-specs.outputs.has_specs == 'true'
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
