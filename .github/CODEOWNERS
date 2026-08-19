@@ -1,18 +1,22 @@
 # CODEOWNERS drives both "domain owner approval" and "merge-gate reviewer
-# approval" as the SAME GitHub PR review (see DESIGN.md §3, §6). Replace the
-# placeholder team handles below with real GitHub teams before enabling
-# branch protection's "Require review from Code Owners" setting.
+# approval" as the SAME GitHub PR review (see DESIGN.md §3, §6).
 #
-# As new IOH domains onboard, add one line per domain, e.g.:
+# NOTE: this repo currently has one collaborator (@DhanviShah23), so
+# "require review from Code Owners" is NOT enabled in branch protection yet
+# — a solo owner can never approve their own PR, which would make every PR
+# unmergeable. Add a second collaborator/team, point the rules below at
+# them, then turn that setting on.
+#
+# As new IOH domains and real teams onboard, add one line per domain, e.g.:
 #   /ioh/apis/payments-*   @ioh-org/payments-owners
 #   /ioh/apis/logistics-*  @ioh-org/logistics-owners
 
 # Default: any IOH-owned API not covered by a more specific rule above.
-/ioh/**                    @ioh-org/api-governance-team
+/ioh/**                    @DhanviShah23
 
 # All vendor submissions are reviewed by the governance team (never by the
 # vendor itself — vendors are not eligible reviewers on their own PRs).
-/vendor/**                 @ioh-org/api-governance-team
+/vendor/**                 @DhanviShah23
 
 # Changes to CI/workflow config require the platform team.
-/.github/                  @ioh-org/platform-team
+/.github/                  @DhanviShah23
