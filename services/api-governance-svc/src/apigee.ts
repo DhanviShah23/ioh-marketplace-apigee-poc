@@ -25,6 +25,13 @@ export interface ProductCreateResult {
   status: "CREATED" | "FAILED";
 }
 
+export interface AppAttachResult {
+  developerEmail: string;
+  appName: string;
+  consumerKey: string;
+  status: "ATTACHED" | "FAILED";
+}
+
 export interface ApigeeClient {
   createAndDeployProxy(opts: {
     proxyName: string;
@@ -42,6 +49,12 @@ export interface ApigeeClient {
     quotaInterval: string; // 'DAY' | 'MONTH'
     attributes: Record<string, string>;
   }): Promise<ProductCreateResult>;
+
+  attachAppToProduct(opts: {
+    orgId: string;
+    appId: string;
+    productName: string;
+  }): Promise<AppAttachResult>;
 }
 
 let cachedAuth: GoogleAuth | undefined;
@@ -218,7 +231,83 @@ export function createRealApigeeClient(config: Config): ApigeeClient {
       }
       return { apigeeProductName: opts.productName, status: "CREATED" };
     },
+
+    // DESIGN.md's subscriber_app is a thin upstream reference (app_id, org_id)
+    // with no real KYC/KYB-backed Apigee developer identity behind it yet.
+    // This synthesizes a developer/app under Apigee 1:1 from those ids so
+    // the attach step is a real, working call rather than a stub — swap in
+    // the real developer email / app name once that upstream system exists.
+    async attachAppToProduct(opts) {
+      const token = await getAccessToken();
+      const developerEmail = `${sanitizeIdentifier(opts.orgId)}@ioh-marketplace-subscribers.local`;
+      const appName = sanitizeIdentifier(opts.appId);
+      const org = config.apigeeOrg;
+
+      const devRes = await fetch(`${MANAGEMENT_API}/organizations/${org}/developers/${encodeURIComponent(developerEmail)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (devRes.status === 404) {
+        const createDevRes = await fetch(`${MANAGEMENT_API}/organizations/${org}/developers`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: developerEmail,
+            firstName: "IOH",
+            lastName: "Subscriber",
+            userName: opts.orgId,
+          }),
+        });
+        if (!createDevRes.ok) {
+          throw new Error(`Apigee developer creation failed (${createDevRes.status}): ${await createDevRes.text()}`);
+        }
+      } else if (!devRes.ok) {
+        throw new Error(`Apigee developer lookup failed (${devRes.status}): ${await devRes.text()}`);
+      }
+
+      const appUrl = `${MANAGEMENT_API}/organizations/${org}/developers/${encodeURIComponent(developerEmail)}/apps/${encodeURIComponent(appName)}`;
+      const appRes = await fetch(appUrl, { headers: { Authorization: `Bearer ${token}` } });
+
+      if (appRes.status === 404) {
+        const createAppRes = await fetch(`${MANAGEMENT_API}/organizations/${org}/developers/${encodeURIComponent(developerEmail)}/apps`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ name: appName, apiProducts: [opts.productName], keyExpiresIn: "-1" }),
+        });
+        if (!createAppRes.ok) {
+          throw new Error(`Apigee app creation failed (${createAppRes.status}): ${await createAppRes.text()}`);
+        }
+        const created = (await createAppRes.json()) as { credentials: Array<{ consumerKey: string }> };
+        return { developerEmail, appName, consumerKey: created.credentials[0].consumerKey, status: "ATTACHED" };
+      }
+
+      if (!appRes.ok) {
+        throw new Error(`Apigee app lookup failed (${appRes.status}): ${await appRes.text()}`);
+      }
+
+      const app = (await appRes.json()) as { credentials: Array<{ consumerKey: string; apiProducts: Array<{ apiproduct: string }> }> };
+      const key = app.credentials[0];
+      const existingProducts = key.apiProducts.map((p) => p.apiproduct);
+      const mergedProducts = existingProducts.includes(opts.productName) ? existingProducts : [...existingProducts, opts.productName];
+
+      const updateKeyRes = await fetch(
+        `${appUrl}/keys/${encodeURIComponent(key.consumerKey)}`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ apiProducts: mergedProducts }),
+        }
+      );
+      if (!updateKeyRes.ok) {
+        throw new Error(`Apigee app-key product attach failed (${updateKeyRes.status}): ${await updateKeyRes.text()}`);
+      }
+
+      return { developerEmail, appName, consumerKey: key.consumerKey, status: "ATTACHED" };
+    },
   };
+}
+
+function sanitizeIdentifier(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9-]+/g, "-");
 }
 
 export function createFakeApigeeClient(): ApigeeClient {
@@ -229,6 +318,14 @@ export function createFakeApigeeClient(): ApigeeClient {
     },
     async createProduct(opts) {
       return { apigeeProductName: opts.productName, status: "CREATED" };
+    },
+    async attachAppToProduct(opts) {
+      return {
+        developerEmail: `${sanitizeIdentifier(opts.orgId)}@ioh-marketplace-subscribers.local`,
+        appName: sanitizeIdentifier(opts.appId),
+        consumerKey: "fake-consumer-key",
+        status: "ATTACHED",
+      };
     },
   };
 }

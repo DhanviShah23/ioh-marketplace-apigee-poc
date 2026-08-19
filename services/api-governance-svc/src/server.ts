@@ -194,5 +194,28 @@ export function buildServer(pool: pg.Pool, apigee: ApigeeClient, config: Config)
     }
   });
 
+  app.post("/apigee-products/:id/attach-app", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { org_id: string; app_id: string };
+    if (!body.org_id || !body.app_id) {
+      return reply.code(400).send({ error: "org_id and app_id are required" });
+    }
+
+    const product = await pool.query(`SELECT * FROM apigee_product WHERE id = $1`, [id]);
+    if (!product.rows[0]) return reply.code(404).send({ error: `apigee_product ${id} not found` });
+
+    try {
+      const attached = await apigee.attachAppToProduct({
+        orgId: body.org_id,
+        appId: body.app_id,
+        productName: product.rows[0].apigee_product_name,
+      });
+      return reply.code(200).send({ attached });
+    } catch (err) {
+      app.log.error(err);
+      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   return app;
 }

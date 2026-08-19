@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import type pg from "pg";
 import type { Config } from "./config.js";
-import { createApigeeProduct } from "./governanceClient.js";
+import { createApigeeProduct, attachAppToProduct } from "./governanceClient.js";
 
 export function buildServer(pool: pg.Pool, config: Config) {
   const app = Fastify({ logger: true });
@@ -124,8 +124,10 @@ export function buildServer(pool: pg.Pool, config: Config) {
     return { bundle_approval: approval.rows[0] };
   });
 
-  // The real-time trigger: bundle_approval -> APPROVED creates one Apigee
-  // product per offer_version (tier), in the same call.
+  // Approving a bundle ONLY publishes it to the marketplace (DESIGN.md §9
+  // step 7) — no Apigee product is created here. Product creation is
+  // deferred to the first actual subscription against a tier (below),
+  // per the confirmed correction: create on subscribe, not on approve.
   app.post("/bundles/:bundleId/approve", async (req, reply) => {
     const { bundleId } = req.params as { bundleId: string };
     const body = req.body as { decided_by: string; comments?: string };
@@ -142,28 +144,7 @@ export function buildServer(pool: pg.Pool, config: Config) {
     );
     await pool.query(`UPDATE product_version SET published_at = COALESCE(published_at, now()) WHERE id = $1`, [pv.id]);
 
-    const apiIds = (await pool.query<{ api_id: string }>(`SELECT api_id FROM bundle_asset WHERE bundle_id = $1`, [bundleId])).rows.map((r) => r.api_id);
-    const offerVersions = (await pool.query(`SELECT * FROM offer_version WHERE product_version_id = $1`, [pv.id])).rows;
-
-    const productResults = [];
-    for (const offer of offerVersions) {
-      try {
-        const result = await createApigeeProduct(config, {
-          bundle_id: bundleId,
-          offer_version_id: offer.id,
-          tier_name: offer.tier_name,
-          quota_limit: offer.quota_limit,
-          quota_interval: offer.quota_interval,
-          api_ids: apiIds,
-        });
-        productResults.push({ offer_version_id: offer.id, tier_name: offer.tier_name, result });
-      } catch (err) {
-        app.log.error(err);
-        productResults.push({ offer_version_id: offer.id, tier_name: offer.tier_name, error: err instanceof Error ? err.message : String(err) });
-      }
-    }
-
-    return { bundle_approval: approval.rows[0], apigee_products: productResults };
+    return { bundle_approval: approval.rows[0], published: true };
   });
 
   app.post("/bundles/:bundleId/subscriptions", async (req, reply) => {
@@ -194,7 +175,36 @@ export function buildServer(pool: pg.Pool, config: Config) {
         [String(sub.rows[0].id), JSON.stringify(sub.rows[0])]
       );
       await client.query("COMMIT");
-      return reply.code(201).send({ subscription: sub.rows[0] });
+      let subscription = sub.rows[0];
+
+      // Real-time trigger: the Apigee product for this tier is created here,
+      // lazily, on the first actual subscription — not at bundle-approval
+      // time. Idempotent: a second subscriber to the same tier reuses the
+      // product api-governance-svc already created (DESIGN.md §9 step 8).
+      try {
+        const offer = (await pool.query(`SELECT * FROM offer_version WHERE id = $1`, [body.offer_version_id])).rows[0];
+        const apiIds = (await pool.query<{ api_id: string }>(`SELECT api_id FROM bundle_asset WHERE bundle_id = $1`, [bundleId])).rows.map((r) => r.api_id);
+
+        const productResp = await createApigeeProduct(config, {
+          bundle_id: bundleId,
+          offer_version_id: offer.id,
+          tier_name: offer.tier_name,
+          quota_limit: offer.quota_limit,
+          quota_interval: offer.quota_interval,
+          api_ids: apiIds,
+        });
+        await pool.query(`UPDATE subscription SET status = 'PRODUCT_CREATED' WHERE id = $1`, [subscription.id]);
+
+        await attachAppToProduct(config, productResp.apigee_product.id, body.org_id, body.app_id);
+        const activated = await pool.query(`UPDATE subscription SET status = 'ACTIVE' WHERE id = $1 RETURNING *`, [subscription.id]);
+        subscription = activated.rows[0];
+      } catch (err) {
+        app.log.error(err);
+        // Leave the subscription at its last-reached status — resilient to
+        // this synchronous call failing; a reconciliation pass can retry.
+      }
+
+      return reply.code(201).send({ subscription });
     } catch (err) {
       await client.query("ROLLBACK");
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
