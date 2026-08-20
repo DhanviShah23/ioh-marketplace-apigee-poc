@@ -1,4 +1,5 @@
 import type { Config } from "./config.js";
+import { getIdTokenForAudience } from "./gcpAuth.js";
 
 export interface CreateProductRequest {
   bundle_id: string;
@@ -14,10 +15,16 @@ export interface CreateProductResponse {
   idempotent?: boolean;
 }
 
+export async function authHeaders(config: Config): Promise<Record<string, string>> {
+  if (!config.governanceSvcInvokerSa) return {};
+  const token = await getIdTokenForAudience(config.governanceSvcInvokerSa, config.governanceSvcUrl);
+  return { Authorization: `Bearer ${token}` };
+}
+
 export async function createApigeeProduct(config: Config, req: CreateProductRequest): Promise<CreateProductResponse> {
   const res = await fetch(`${config.governanceSvcUrl}/apigee-products`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await authHeaders(config)) },
     body: JSON.stringify(req),
   });
   const body = (await res.json()) as CreateProductResponse;
@@ -30,7 +37,7 @@ export async function createApigeeProduct(config: Config, req: CreateProductRequ
 export async function attachAppToProduct(config: Config, apigeeProductId: number, developerEmail: string, appName: string): Promise<unknown> {
   const res = await fetch(`${config.governanceSvcUrl}/apigee-products/${apigeeProductId}/attach-app`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await authHeaders(config)) },
     body: JSON.stringify({ developer_email: developerEmail, app_name: appName }),
   });
   const body = await res.json();

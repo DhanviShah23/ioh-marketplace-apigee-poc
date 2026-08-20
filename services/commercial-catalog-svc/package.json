@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "fastify": "^5.1.0",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "google-auth-library": "^9.15.0"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

@@ -105,15 +105,32 @@ Verified live: a real registration mirrored byte-identical content and
 produced a correct event log; a deliberately-corrupted checksum was caught
 and marked `FAILED` without creating any GCS object or Apigee proxy.
 
-## Not yet implemented / blocked
+## api-governance-svc is deployed (Cloud Run)
 
-- **Cloud Run deployment of api-governance-svc** is blocked on two IAM
-  grants I can't make myself (I lack `setIamPolicy` on `se-ps1-appdev` at
-  the project and secret level) — see the pinned task list / conversation
-  for the exact `gcloud` commands needed from someone with IAM Admin there.
-  Once granted: `roles/cloudsql.client` (project-level) and
-  `roles/secretmanager.secretAccessor` (on the `ioh-marketplace-pg-app-password`
-  secret), both for `ioh-api-governance-svc@se-ps1-appdev.iam.gserviceaccount.com`.
+`https://ioh-api-governance-svc-281319555566.asia-south1.run.app` —
+`se-ps1-appdev`/`asia-south1`, backed by the real `ioh-marketplace-pg` Cloud
+SQL instance, IAM-authenticated (no public access). Verified end to end
+directly against the deployed URL: DB registration, GCS mirroring +
+checksum verification, and real Apigee proxy creation/deploy.
+
+**Two callers now authenticate to it, both proven live:**
+- `post-merge.yml` on an actual GitHub merge: WIF → impersonate
+  `ioh-api-governance-svc@se-ps1-appdev.iam.gserviceaccount.com` → mint an
+  ID token via the IAM Credentials API (`gcloud auth print-identity-token
+  --audiences=` doesn't work with WIF-impersonated credentials — found by
+  watching a real run fail with an empty token) → call the service. A real
+  merge created a real, deployed Apigee proxy revision.
+- `commercial-catalog-svc`'s subscription flow: the same
+  mint-an-ID-token-via-IAM-Credentials-API pattern
+  (`src/gcpAuth.ts`), gated by an optional `GOVERNANCE_SVC_INVOKER_SA` env
+  var (unset = call unauthenticated, e.g. for local-to-local dev). Verified
+  live: a real subscription against the deployed service created a real
+  product and attached it to a real, manually-created Apigee app —
+  confirmed independently in Apigee (same consumer key across four
+  separate products from four separate subscriptions).
+
+## Not yet implemented
+
 - The `attach-app`-to-product step's full KYC/KYB-backed app model remains
   thin (see the "Attach products to a real app" work — you register a real,
   manually-created Apigee developer/app via `POST /subscriber-apps` rather

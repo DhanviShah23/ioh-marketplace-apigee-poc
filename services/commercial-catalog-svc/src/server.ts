@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import type pg from "pg";
 import type { Config } from "./config.js";
-import { createApigeeProduct, attachAppToProduct } from "./governanceClient.js";
+import { createApigeeProduct, attachAppToProduct, authHeaders } from "./governanceClient.js";
 
 export function buildServer(pool: pg.Pool, config: Config) {
   const app = Fastify({ logger: true });
@@ -30,7 +30,7 @@ export function buildServer(pool: pg.Pool, config: Config) {
   // api_asset_ref). Upserts from api-governance-svc's registry on demand.
   app.post("/api-asset-refs/sync", async (req, reply) => {
     const { api_id } = req.body as { api_id: string };
-    const res = await fetch(`${config.governanceSvcUrl}/api-asset-versions/${api_id}`);
+    const res = await fetch(`${config.governanceSvcUrl}/api-asset-versions/${api_id}`, { headers: await authHeaders(config) });
     if (!res.ok) return reply.code(502).send({ error: "governance svc lookup failed" });
     const data = (await res.json()) as { versions: Array<Record<string, unknown>> };
     const latest = data.versions.find((v) => v.status === "AVAILABLE_FOR_PACKAGING");
