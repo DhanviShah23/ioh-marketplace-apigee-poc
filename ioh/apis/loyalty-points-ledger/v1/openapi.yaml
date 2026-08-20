@@ -1,0 +1,37 @@
+openapi: 3.1.0
+info:
+  title: Loyalty Points API
+  version: 1.0.0
+  x-ioh-api-id: loyalty-points-ledger
+  description: Read and adjust a subscriber's loyalty points balance.
+  contact:
+    name: Platform Loyalty
+    email: loyalty-platform@ioh.example.com
+servers:
+  - url: https://api.ioh.example.com/loyalty/v1
+paths:
+  /points-balances/{subscriberId}:
+    get:
+      operationId: getPointsBalance
+      summary: Get a subscriber's points balance
+      description: Returns the current loyalty points balance for a subscriber.
+      tags: [points-balances]
+      security:
+        - oauth2: [loyalty:read]
+      parameters:
+        - name: subscriberId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Balance found
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.ioh.example.com/oauth2/token
+          scopes:
+            "loyalty:read": Read loyalty balances
