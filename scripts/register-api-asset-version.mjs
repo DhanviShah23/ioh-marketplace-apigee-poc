@@ -48,6 +48,10 @@ const payload = {
   checksum_sha256: checksum,
   created_by: actor,
   spec,
+  // The original file bytes, exactly as committed — needed to mirror the
+  // real artifact to GCS. Re-serializing the parsed `spec` object would
+  // produce different bytes and break the checksum match (DESIGN.md §4).
+  spec_raw: raw,
 };
 
 if (!governanceSvcUrl) {

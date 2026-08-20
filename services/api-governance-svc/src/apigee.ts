@@ -1,10 +1,6 @@
-import { GoogleAuth } from "google-auth-library";
 import archiver from "archiver";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import type { Config } from "./config.js";
-
-const execFileAsync = promisify(execFile);
+import { getAccessToken } from "./gcpAuth.js";
 
 const MANAGEMENT_API = "https://apigee.googleapis.com/v1";
 
@@ -55,29 +51,6 @@ export interface ApigeeClient {
     appName: string;
     productName: string;
   }): Promise<AppAttachResult>;
-}
-
-let cachedAuth: GoogleAuth | undefined;
-
-// Prefers the active `gcloud` CLI identity over ADC: on dev machines the
-// mounted/well-known ADC file can belong to a different, stale account than
-// whichever one is actually `gcloud auth login`-active and IAM-authorized
-// on the target Apigee org. Falls back to ADC (e.g. in a real deployment
-// with a service-account key and no gcloud binary present).
-async function getAccessToken(): Promise<string> {
-  try {
-    const { stdout } = await execFileAsync("gcloud", ["auth", "print-access-token"]);
-    const token = stdout.trim();
-    if (token) return token;
-  } catch {
-    // fall through to ADC
-  }
-
-  cachedAuth ??= new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/cloud-platform"] });
-  const client = await cachedAuth.getClient();
-  const token = await client.getAccessToken();
-  if (!token.token) throw new Error("Failed to obtain a GCP access token from gcloud CLI or ADC");
-  return token.token;
 }
 
 // Builds a minimal, real apiproxy bundle: a VerifyAPIKey + Quota PreFlow

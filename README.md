@@ -84,12 +84,40 @@ deployment decision left for you to make explicitly. Until `GOVERNANCE_SVC_URL`
 is set, the workflow logs the registration payload in dry-run mode instead
 of failing.
 
-## Not yet implemented
+## GCS mirroring + checksum verification (DESIGN.md §4)
 
-GCS mirroring/checksum-verification-against-GCS from DESIGN.md §4 (the
-services compute and store the checksum, but don't yet mirror the spec to
-GCS), the `attach-app`-to-product step's full KYC/KYB-backed app model, and
-an actual public deployment of either service.
+Real, live, verified against `gs://ioh-marketplace-apigee-poc-assets` and
+`gs://ioh-marketplace-apigee-poc-logs` in `se-ps1-appdev`. `POST
+/api-asset-versions` now:
+1. Independently recomputes the SHA-256 of the received `spec_raw` bytes and
+   compares it to the caller-supplied checksum, before touching GCS or
+   Apigee at all.
+2. Mirrors the exact original file bytes to
+   `gs://.../{ioh|vendor/<org>}/apis/{api-id}/v{N}/{commit_sha}/openapi.yaml`,
+   then independently re-downloads and re-hashes the object (not trusting
+   GCS's own crc32c/md5) — a real mismatch fails the version outright and
+   skips Apigee proxy creation entirely, exactly as designed.
+3. Writes one immutable JSON event log per version to
+   `gs://.../{...}/{commit_sha}.json` (`ApiAssetVersionRegistered` on
+   success, `ApiAssetVersionChecksumMismatch` on failure).
+
+Verified live: a real registration mirrored byte-identical content and
+produced a correct event log; a deliberately-corrupted checksum was caught
+and marked `FAILED` without creating any GCS object or Apigee proxy.
+
+## Not yet implemented / blocked
+
+- **Cloud Run deployment of api-governance-svc** is blocked on two IAM
+  grants I can't make myself (I lack `setIamPolicy` on `se-ps1-appdev` at
+  the project and secret level) — see the pinned task list / conversation
+  for the exact `gcloud` commands needed from someone with IAM Admin there.
+  Once granted: `roles/cloudsql.client` (project-level) and
+  `roles/secretmanager.secretAccessor` (on the `ioh-marketplace-pg-app-password`
+  secret), both for `ioh-api-governance-svc@se-ps1-appdev.iam.gserviceaccount.com`.
+- The `attach-app`-to-product step's full KYC/KYB-backed app model remains
+  thin (see the "Attach products to a real app" work — you register a real,
+  manually-created Apigee developer/app via `POST /subscriber-apps` rather
+  than this system provisioning one at true marketplace-registration time).
 
 ## CODEOWNERS placeholders
 

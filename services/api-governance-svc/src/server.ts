@@ -1,7 +1,9 @@
 import Fastify from "fastify";
 import type pg from "pg";
+import { createHash } from "node:crypto";
 import type { Config } from "./config.js";
 import type { ApigeeClient, OasDoc } from "./apigee.js";
+import { mirrorAndVerify, writeEventLog } from "./gcs.js";
 
 export function buildServer(pool: pg.Pool, apigee: ApigeeClient, config: Config) {
   const app = Fastify({ logger: true });
@@ -25,9 +27,10 @@ export function buildServer(pool: pg.Pool, apigee: ApigeeClient, config: Config)
       governance_evidence_uri?: string;
       created_by: string;
       spec: OasDoc;
+      spec_raw: string;
     };
 
-    const required = ["api_id", "namespace", "origin", "major_version", "oas_semantic_version", "repo", "path", "commit_sha", "checksum_sha256", "created_by", "spec"] as const;
+    const required = ["api_id", "namespace", "origin", "major_version", "oas_semantic_version", "repo", "path", "commit_sha", "checksum_sha256", "created_by", "spec", "spec_raw"] as const;
     for (const field of required) {
       if (body[field] === undefined || body[field] === null) {
         return reply.code(400).send({ error: `missing required field: ${field}` });
@@ -69,6 +72,58 @@ export function buildServer(pool: pg.Pool, apigee: ApigeeClient, config: Config)
     );
     const versionId = inserted.rows[0].id;
 
+    const nsPrefix = body.origin === "VENDOR" ? `vendor/${body.vendor_org_id}/apis` : "ioh/apis";
+    const objectPrefix = `${nsPrefix}/${body.api_id}/v${body.major_version}/${body.commit_sha}`;
+    const eventLogPath = `${nsPrefix}/${body.api_id}/v${body.major_version}/${body.commit_sha}.json`;
+
+    // Defensive: verify what we received matches what CI hashed from Git,
+    // before ever touching GCS or Apigee.
+    const receivedChecksum = createHash("sha256").update(body.spec_raw, "utf8").digest("hex");
+    if (receivedChecksum !== body.checksum_sha256) {
+      await pool.query(`UPDATE api_asset_version SET status = 'FAILED' WHERE id = $1`, [versionId]);
+      return reply.code(400).send({
+        api_asset_version_id: versionId,
+        status: "FAILED",
+        error: `checksum mismatch between request and received spec_raw content (expected ${body.checksum_sha256}, got ${receivedChecksum})`,
+      });
+    }
+
+    // DESIGN.md §4: mirror to GCS, then independently re-download and
+    // re-hash — match proceeds to packaging, mismatch fails outright and
+    // is never exposed for packaging (no Apigee proxy is created either).
+    let mirror;
+    try {
+      mirror = await mirrorAndVerify(config.gcsAssetsBucket, `${objectPrefix}/openapi.yaml`, Buffer.from(body.spec_raw, "utf8"), body.checksum_sha256);
+    } catch (err) {
+      app.log.error(err);
+      await pool.query(`UPDATE api_asset_version SET status = 'FAILED' WHERE id = $1`, [versionId]);
+      return reply.code(502).send({ api_asset_version_id: versionId, status: "FAILED", error: err instanceof Error ? err.message : String(err) });
+    }
+
+    if (!mirror.verified) {
+      await pool.query(`UPDATE api_asset_version SET status = 'FAILED', gcs_spec_uri = $2 WHERE id = $1`, [versionId, mirror.gcsUri]);
+      await writeEventLog(config.gcsLogsBucket, eventLogPath, {
+        event_type: "ApiAssetVersionChecksumMismatch",
+        api_id: body.api_id,
+        namespace: body.namespace,
+        major_version: body.major_version,
+        commit_sha: body.commit_sha,
+        oas_semantic_version: body.oas_semantic_version,
+        actor: body.created_by,
+        checksum_expected: body.checksum_sha256,
+        checksum_actual: mirror.actualSha256,
+        outcome: "FAILED",
+        timestamp: new Date().toISOString(),
+      });
+      return reply.code(502).send({
+        api_asset_version_id: versionId,
+        status: "FAILED",
+        error: `GCS checksum verification failed: expected ${body.checksum_sha256}, got ${mirror.actualSha256} after round-trip`,
+      });
+    }
+
+    await pool.query(`UPDATE api_asset_version SET gcs_spec_uri = $2 WHERE id = $1`, [versionId, mirror.gcsUri]);
+
     const proxyName = `${body.api_id}-v${body.major_version}`;
     const basePath = `/${body.api_id}/v${body.major_version}`;
     const targetUrl = body.spec.servers?.[0]?.url ?? "https://httpbin.org/anything";
@@ -89,10 +144,28 @@ export function buildServer(pool: pg.Pool, apigee: ApigeeClient, config: Config)
       );
       await pool.query(`UPDATE api_asset_version SET status = 'AVAILABLE_FOR_PACKAGING' WHERE id = $1`, [versionId]);
 
+      const eventLogUri = await writeEventLog(config.gcsLogsBucket, eventLogPath, {
+        event_type: "ApiAssetVersionRegistered",
+        api_id: body.api_id,
+        namespace: body.namespace,
+        major_version: body.major_version,
+        commit_sha: body.commit_sha,
+        oas_semantic_version: body.oas_semantic_version,
+        actor: body.created_by,
+        checksum: body.checksum_sha256,
+        gcs_spec_uri: mirror.gcsUri,
+        apigee_proxy: deployed,
+        outcome: "PASSED",
+        timestamp: new Date().toISOString(),
+      });
+      await pool.query(`UPDATE api_asset_version SET governance_evidence_uri = $2 WHERE id = $1`, [versionId, eventLogUri]);
+
       return reply.code(201).send({
         api_asset_version_id: versionId,
         status: "AVAILABLE_FOR_PACKAGING",
         apigee_proxy: deployed,
+        gcs_spec_uri: mirror.gcsUri,
+        governance_evidence_uri: eventLogUri,
       });
     } catch (err) {
       app.log.error(err);

@@ -47,6 +47,8 @@ services:
       APIGEE_ORG: searceapigeex
       APIGEE_ENV: dev1
       USE_FAKE_APIGEE_CLIENT: "false"
+      GCS_ASSETS_BUCKET: ioh-marketplace-apigee-poc-assets
+      GCS_LOGS_BUCKET: ioh-marketplace-apigee-poc-logs
       # This dev machine has no service-account key yet, so we mount the
       # already-issued Application Default Credentials (authorized_user
       # type) instead — google-auth-library refreshes tokens from these

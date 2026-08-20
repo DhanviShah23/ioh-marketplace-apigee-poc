@@ -2,6 +2,14 @@ import pg from "pg";
 import type { Config } from "./config.js";
 
 export function createPool(config: Config): pg.Pool {
+  if (config.cloudSqlInstanceConnectionName) {
+    return new pg.Pool({
+      host: `/cloudsql/${config.cloudSqlInstanceConnectionName}`,
+      user: config.dbUser,
+      password: config.dbPassword,
+      database: config.dbName,
+    });
+  }
   return new pg.Pool({ connectionString: config.databaseUrl });
 }
 
