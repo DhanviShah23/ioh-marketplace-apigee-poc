@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>IOH API Marketplace — Console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #EEF3F1;
+    --surface: #FBFDFC;
+    --surface-2: #E3EAE7;
+    --text: #10201F;
+    --text-muted: #4B605C;
+    --border: #CBD8D4;
+    --accent: #C97A3D;
+    --accent-contrast: #FFFFFF;
+    --ok: #2F7A5A;
+    --ok-bg: #DCEFE5;
+    --critical: #A23F33;
+    --critical-bg: #F5E2DE;
+    --pending: #4C6E85;
+    --pending-bg: #E1E9EE;
+    --mono-bg: #E7EEEC;
+    --shadow: 0 1px 2px rgba(16,32,31,0.06), 0 4px 16px rgba(16,32,31,0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0B1514; --surface: #10201F; --surface-2: #162825; --text: #E7EEEC; --text-muted: #93A8A3;
+      --border: #26403D; --accent: #E0955C; --accent-contrast: #1B120A; --ok: #57B98A; --ok-bg: #16302A;
+      --critical: #E17767; --critical-bg: #33201C; --pending: #7FA3BE; --pending-bg: #17262E; --mono-bg: #16282E;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0B1514; --surface: #10201F; --surface-2: #162825; --text: #E7EEEC; --text-muted: #93A8A3;
+    --border: #26403D; --accent: #E0955C; --accent-contrast: #1B120A; --ok: #57B98A; --ok-bg: #16302A;
+    --critical: #E17767; --critical-bg: #33201C; --pending: #7FA3BE; --pending-bg: #17262E; --mono-bg: #16282E;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.3);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 15px; line-height: 1.5; }
+  h1, h2, h3 { font-family: "Iowan Old Style", Georgia, "Times New Roman", serif; text-wrap: balance; margin: 0; }
+  code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+  a { color: inherit; }
+  button { font: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  .app { min-height: 100vh; display: flex; flex-direction: column; }
+  .rail { display: flex; align-items: center; gap: 28px; padding: 14px 28px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+  .brand { display: flex; align-items: baseline; gap: 8px; margin-right: auto; }
+  .brand-mark { font-family: "Iowan Old Style", Georgia, serif; font-size: 19px; font-weight: 600; letter-spacing: 0.2px; }
+  .brand-tag { font-size: 12px; color: var(--text-muted); letter-spacing: 0.04em; text-transform: uppercase; }
+  .planes { display: flex; gap: 4px; background: var(--surface-2); border-radius: 8px; padding: 3px; }
+  .plane-btn { border: none; background: transparent; color: var(--text-muted); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13.5px; font-weight: 600; letter-spacing: 0.01em; }
+  .plane-btn[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+  .identity { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-muted); }
+  .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-contrast); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .subnav { display: flex; gap: 22px; padding: 0 28px; border-bottom: 1px solid var(--border); background: var(--bg); }
+  .subnav-btn { border: none; background: transparent; color: var(--text-muted); cursor: pointer; padding: 13px 2px; font-size: 13.5px; font-weight: 600; border-bottom: 2px solid transparent; }
+  .subnav-btn[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+  main { flex: 1; padding: 28px; max-width: 1180px; width: 100%; margin: 0 auto; }
+  .view { display: none; }
+  .view[data-active="true"] { display: block; }
+  .plane { display: none; }
+  .plane[data-active="true"] { display: flex; flex-direction: column; flex: 1; }
+  .page-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .page-head h1 { font-size: 24px; }
+  .page-head p { margin: 4px 0 0; color: var(--text-muted); font-size: 13.5px; max-width: 60ch; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn:hover { border-color: var(--text-muted); }
+  .btn-primary { background: var(--accent); color: var(--accent-contrast); border-color: transparent; }
+  .btn-primary:hover { filter: brightness(1.06); }
+  .btn[disabled] { opacity: 0.55; cursor: default; }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 100px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; white-space: nowrap; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill-ok { background: var(--ok-bg); color: var(--ok); }
+  .pill-critical { background: var(--critical-bg); color: var(--critical); }
+  .pill-pending { background: var(--pending-bg); color: var(--pending); }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 720px; }
+  th { text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 700; }
+  td { padding: 13px 16px; border-bottom: 1px solid var(--border); font-size: 13.5px; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  .api-name { font-weight: 700; }
+  .api-ns { color: var(--text-muted); font-size: 12px; }
+  .chip { display: inline-block; background: var(--mono-bg); border-radius: 6px; padding: 2px 7px; font-size: 12px; }
+  .verified { color: var(--ok); font-weight: 700; }
+  .mismatch { color: var(--critical); font-weight: 700; }
+  h2.section-title { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 12px; }
+
+  /* ---------- modal (spec submission) ---------- */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(11,21,20,0.45); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 100; }
+  .modal-overlay[data-open="true"] { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto; padding: 24px; }
+  .modal h2 { font-size: 19px; margin-bottom: 4px; }
+  .modal-sub { color: var(--text-muted); font-size: 13px; margin: 0 0 18px; }
+  .field { margin-bottom: 14px; }
+  .field-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 6px; display: block; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  input[type="text"], input[type="email"], input[type="number"], select, textarea {
+    width: 100%; padding: 9px 10px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); font-size: 13.5px; font-family: inherit;
+  }
+  textarea.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; min-height: 160px; resize: vertical; }
+  .field-hint { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
+  .file-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+  .result-note { border-radius: 8px; padding: 12px 14px; font-size: 13px; margin-top: 4px; display: none; }
+  .result-note[data-shown="true"] { display: block; }
+  .result-note.ok { background: var(--ok-bg); color: var(--ok); }
+  .result-note.err { background: var(--critical-bg); color: var(--critical); }
+  .result-note a { text-decoration: underline; font-weight: 600; }
+  .spinner { width: 13px; height: 13px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; display: inline-block; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="rail">
+    <div class="brand"><span class="brand-mark">IOH</span><span class="brand-tag">API Marketplace</span></div>
+    <div class="planes" role="tablist" aria-label="Plane">
+      <button class="plane-btn" data-plane-btn="governance" aria-selected="true">Governance</button>
+      <button class="plane-btn" data-plane-btn="marketplace" aria-selected="false">Marketplace</button>
+    </div>
+    <div class="identity"><span id="identity-email">dhanvi.shah@searce.com</span><span class="avatar">DS</span></div>
+  </div>
+
+  <section class="plane" data-plane="governance" data-active="true">
+    <nav class="subnav" role="tablist" aria-label="Governance views">
+      <button class="subnav-btn" data-view-btn="registry" aria-selected="true">Registry</button>
+      <button class="subnav-btn" data-view-btn="approvals" aria-selected="false">Approvals</button>
+    </nav>
+    <main>
+      <div class="view" data-view="registry" data-active="true">
+        <div class="page-head">
+          <div>
+            <h1>API registry</h1>
+            <p>Every merged spec, its deployed Apigee proxy revision, and the checksum verification between Git and GCS.</p>
+          </div>
+          <button class="btn btn-primary" id="register-btn">＋ Register from Git</button>
+        </div>
+        <div class="panel table-scroll">
+          <table>
+            <thead><tr><th>API</th><th>Version</th><th>Status</th><th>Proxy</th><th>Commit</th><th>Checksum</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><div class="api-name">payments-wallet-transfer</div><div class="api-ns">payments</div></td>
+                <td class="mono">v1 · 1.0.3</td>
+                <td><span class="pill pill-ok">Available</span></td>
+                <td class="mono">rev 6</td>
+                <td><span class="chip mono">15268e4</span></td>
+                <td class="verified">✓ verified</td>
+              </tr>
+              <tr>
+                <td><div class="api-name">logistics-shipment-tracking</div><div class="api-ns">logistics</div></td>
+                <td class="mono">v1 · 1.2.0</td>
+                <td><span class="pill pill-ok">Available</span></td>
+                <td class="mono">rev 3</td>
+                <td><span class="chip mono">8f3a1c2</span></td>
+                <td class="verified">✓ verified</td>
+              </tr>
+              <tr id="pending-submission-row" style="display:none;">
+                <td><div class="api-name" id="pending-submission-name">—</div><div class="api-ns">just submitted</div></td>
+                <td class="mono">—</td>
+                <td><span class="pill pill-pending">Awaiting merge</span></td>
+                <td class="mono">—</td>
+                <td class="mono">—</td>
+                <td>—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="color:var(--text-muted); font-size:12.5px; margin-top:14px;">
+          Submitting opens a real pull request against
+          <code style="background:var(--mono-bg); padding:2px 6px; border-radius:5px;">DhanviShah23/ioh-marketplace-apigee-poc</code>.
+          Once a reviewer merges it, the existing post-merge pipeline creates the Apigee X proxy automatically — nothing further to do here.
+        </p>
+      </div>
+
+      <div class="view" data-view="approvals">
+        <div class="page-head"><div><h1>Bundle approvals</h1><p>Coming in a later pass.</p></div></div>
+      </div>
+    </main>
+  </section>
+
+  <section class="plane" data-plane="marketplace">
+    <nav class="subnav" role="tablist" aria-label="Marketplace views">
+      <button class="subnav-btn" data-view-btn="catalog" aria-selected="true">Catalog</button>
+    </nav>
+    <main>
+      <div class="view" data-view="catalog" data-active="true">
+        <div class="page-head"><div><h1>Catalog</h1><p>Coming in a later pass.</p></div></div>
+      </div>
+    </main>
+  </section>
+</div>
+
+<!-- ============ SPEC SUBMISSION MODAL ============ -->
+<div class="modal-overlay" id="modal-overlay">
+  <form class="modal" id="submit-form" novalidate>
+    <h2>Register an API from Git</h2>
+    <p class="modal-sub">Pushes a new branch to GitHub and opens a pull request. Nothing touches Apigee until that PR is merged.</p>
+
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label" for="f-api-id">API ID</label>
+        <input type="text" id="f-api-id" placeholder="payments-wallet-transfer" required pattern="[a-z0-9][a-z0-9-]{1,61}[a-z0-9]">
+        <div class="field-hint">lowercase, kebab-case, e.g. <code>domain-resource</code></div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="f-major-version">Major version</label>
+        <input type="number" id="f-major-version" value="1" min="1" required>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label" for="f-origin">Origin</label>
+        <select id="f-origin">
+          <option value="IOH">IOH-owned</option>
+          <option value="VENDOR">Vendor</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label" id="f-org-label" for="f-org">Owning domain</label>
+        <input type="text" id="f-org" placeholder="payments">
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="f-submitted-by">Submitted by</label>
+      <input type="email" id="f-submitted-by" value="dhanvi.shah@searce.com" required>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="f-file">OpenAPI spec (.yaml / .yml / .json)</label>
+      <div class="file-row">
+        <input type="file" id="f-file" accept=".yaml,.yml,.json">
+      </div>
+      <textarea class="mono" id="f-spec" placeholder="openapi: 3.1.0&#10;info:&#10;  title: ...&#10;  x-ioh-api-id: ...&#10;  version: 1.0.0&#10;..." required></textarea>
+    </div>
+
+    <div class="result-note" id="submit-result"></div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn" id="modal-cancel">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="modal-submit">Push to GitHub</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  // ---- plane / subnav switching (unchanged from the design concept) ----
+  const planeBtns = document.querySelectorAll('[data-plane-btn]');
+  const planes = document.querySelectorAll('[data-plane]');
+  planeBtns.forEach(btn => btn.addEventListener('click', () => {
+    planeBtns.forEach(b => b.setAttribute('aria-selected', String(b === btn)));
+    planes.forEach(p => p.setAttribute('data-active', String(p.dataset.plane === btn.dataset.planeBtn)));
+  }));
+  document.querySelectorAll('.plane').forEach(plane => {
+    const viewBtns = plane.querySelectorAll('[data-view-btn]');
+    const views = plane.querySelectorAll('[data-view]');
+    viewBtns.forEach(btn => btn.addEventListener('click', () => {
+      viewBtns.forEach(b => b.setAttribute('aria-selected', String(b === btn)));
+      views.forEach(v => v.setAttribute('data-active', String(v.dataset.view === btn.dataset.viewBtn)));
+    }));
+  });
+
+  // ---- spec submission modal: real network calls ----
+  const overlay = document.getElementById('modal-overlay');
+  const form = document.getElementById('submit-form');
+  const resultNote = document.getElementById('submit-result');
+  const submitBtn = document.getElementById('modal-submit');
+  const originSelect = document.getElementById('f-origin');
+  const orgLabel = document.getElementById('f-org-label');
+  const orgInput = document.getElementById('f-org');
+  const fileInput = document.getElementById('f-file');
+  const specTextarea = document.getElementById('f-spec');
+
+  document.getElementById('register-btn').addEventListener('click', () => {
+    resultNote.removeAttribute('data-shown');
+    resultNote.className = 'result-note';
+    overlay.setAttribute('data-open', 'true');
+  });
+  document.getElementById('modal-cancel').addEventListener('click', () => overlay.setAttribute('data-open', 'false'));
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.setAttribute('data-open', 'false'); });
+
+  originSelect.addEventListener('change', () => {
+    const isVendor = originSelect.value === 'VENDOR';
+    orgLabel.textContent = isVendor ? 'Vendor org ID' : 'Owning domain';
+    orgInput.placeholder = isVendor ? 'acme-corp' : 'payments';
+  });
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { specTextarea.value = String(reader.result || ''); };
+    reader.readAsText(file);
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const apiId = document.getElementById('f-api-id').value.trim();
+    const majorVersion = Number(document.getElementById('f-major-version').value);
+    const origin = originSelect.value;
+    const org = orgInput.value.trim();
+    const submittedBy = document.getElementById('f-submitted-by').value.trim();
+    const specContent = specTextarea.value;
+
+    if (!apiId || !specContent || !submittedBy) {
+      resultNote.textContent = 'API ID, spec content, and submitted-by are required.';
+      resultNote.className = 'result-note err';
+      resultNote.setAttribute('data-shown', 'true');
+      return;
+    }
+
+    const payload = {
+      api_id: apiId,
+      origin,
+      major_version: majorVersion,
+      submitted_by: submittedBy,
+      spec_content: specContent,
+      ...(origin === 'VENDOR' ? { vendor_org_id: org } : { namespace: org }),
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner"></span> Pushing…';
+    resultNote.removeAttribute('data-shown');
+
+    try {
+      const res = await fetch('/spec-submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || `request failed (${res.status})`);
+
+      resultNote.innerHTML = `Pushed branch <code>${body.branch}</code> — <a href="${body.pr_url}" target="_blank" rel="noopener">PR #${body.pr_number} opened</a>. Merge it to trigger real-time proxy creation.`;
+      resultNote.className = 'result-note ok';
+      resultNote.setAttribute('data-shown', 'true');
+
+      document.getElementById('pending-submission-name').textContent = apiId;
+      document.getElementById('pending-submission-row').style.display = '';
+    } catch (err) {
+      resultNote.textContent = err instanceof Error ? err.message : String(err);
+      resultNote.className = 'result-note err';
+      resultNote.setAttribute('data-shown', 'true');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Push to GitHub';
+    }
+  });
+</script>
+</body>
+</html>

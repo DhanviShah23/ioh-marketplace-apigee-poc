@@ -3,6 +3,29 @@
 Spec repo + pre-merge governance CI for IOH's API onboarding pipeline. Full
 design: [`DESIGN.md`](./DESIGN.md).
 
+## ioh-portal — real UI, real GitHub integration
+
+`services/ioh-portal` is a real (not mocked) web app: a UI adapted from the
+published design-concept Artifact, backed by a thin Fastify API that pushes
+a submitted OpenAPI spec to a **real new GitHub branch**, creates
+`metadata.yaml` for a brand-new api-id, and **auto-opens a real PR**. Once
+that PR is reviewed and merged, the existing pre-merge/post-merge pipeline
+takes over unchanged — real-time Apigee proxy creation, no new wiring
+needed there.
+
+Deployed to Cloud Run (`ioh-portal`, `se-ps1-appdev`/`asia-south1`),
+IAM-protected (kept private/internal for now, per your call — not
+`--allow-unauthenticated`). It holds a dedicated, narrowly-scoped GitHub PAT
+(stored in Secret Manager as `ioh-portal-github-pat`) via its own service
+account `ioh-portal-svc`, which has no Apigee/Cloud SQL/GCS access at all —
+it can only read/write this one GitHub repo.
+
+Verified live, twice, fully end to end: submitted a real spec through the
+UI → real branch + PR opened → real pre-merge CI passed (all 9 checks) →
+merged → real, deployed Apigee proxy confirmed via the Apigee Management
+API. Once more directly against the deployed Cloud Run URL (not just
+locally), confirming the whole loop holds outside local dev too.
+
 ## What's implemented in this scaffold
 
 - **Git layout** (§2): `ioh/apis/{api-id}/v{N}/openapi.yaml`, `vendor/{org}/apis/{api-id}/v{N}/openapi.yaml`, `metadata.yaml` per api-id, `_index/api-ids.json` cache.
