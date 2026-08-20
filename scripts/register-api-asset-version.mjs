@@ -60,9 +60,13 @@ if (!governanceSvcUrl) {
   process.exit(0);
 }
 
+const authToken = process.env.GOVERNANCE_SVC_AUTH_TOKEN;
 const res = await fetch(`${governanceSvcUrl}/api-asset-versions`, {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+  },
   body: JSON.stringify(payload),
 });
 const body = await res.json();

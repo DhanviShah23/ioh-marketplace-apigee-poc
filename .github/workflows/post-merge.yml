@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write # required for Workload Identity Federation
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,10 +42,28 @@ jobs:
         id: detect
         run: node scripts/detect-changed-specs.mjs "${{ github.event.before }}" "${{ github.sha }}"
 
+      # api-governance-svc runs on Cloud Run behind IAM auth (no public
+      # unauthenticated access, since this endpoint can create real Apigee
+      # resources) — authenticate via WIF, no long-lived key involved.
+      - uses: google-github-actions/auth@v2
+        if: steps.detect.outputs.has_specs == 'true' && vars.GOVERNANCE_SVC_URL != ''
+        with:
+          workload_identity_provider: "projects/281319555566/locations/global/workloadIdentityPools/dev-poc-github-wif-pool/providers/dev-poc-github-wif-pool"
+          service_account: "ioh-api-governance-svc@se-ps1-appdev.iam.gserviceaccount.com"
+
+      - uses: google-github-actions/setup-gcloud@v2
+        if: steps.detect.outputs.has_specs == 'true' && vars.GOVERNANCE_SVC_URL != ''
+
+      - name: Get an identity token scoped to api-governance-svc
+        id: idtoken
+        if: steps.detect.outputs.has_specs == 'true' && vars.GOVERNANCE_SVC_URL != ''
+        run: echo "token=$(gcloud auth print-identity-token --audiences=${{ vars.GOVERNANCE_SVC_URL }})" >> "$GITHUB_OUTPUT"
+
       - name: Register each changed spec with api-governance-svc
         if: steps.detect.outputs.has_specs == 'true'
         env:
           GOVERNANCE_SVC_URL: ${{ vars.GOVERNANCE_SVC_URL }}
+          GOVERNANCE_SVC_AUTH_TOKEN: ${{ steps.idtoken.outputs.token }}
         run: |
           echo '${{ steps.detect.outputs.specs }}' | node -e '
             const specs = JSON.parse(require("fs").readFileSync(0, "utf8"));
