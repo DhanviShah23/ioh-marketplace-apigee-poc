@@ -1,0 +1,42 @@
+openapi: 3.1.0
+info:
+  title: Notification Dispatch API
+  version: 1.0.0
+  x-ioh-api-id: notifications-sms-dispatch
+  description: Send transactional SMS notifications to IOH subscribers.
+  contact:
+    name: Platform Notifications
+    email: notifications-platform@ioh.example.com
+servers:
+  - url: https://api.ioh.example.com/notifications/v1
+paths:
+  /sms-dispatches:
+    post:
+      operationId: createSmsDispatch
+      summary: Send an SMS notification
+      description: Dispatches a single transactional SMS to a subscriber.
+      tags: [sms-dispatches]
+      security:
+        - oauth2: [sms:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to, body]
+              properties:
+                to: { type: string }
+                body: { type: string }
+      responses:
+        "202":
+          description: Accepted for delivery
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.ioh.example.com/oauth2/token
+          scopes:
+            "sms:write": Send SMS notifications
