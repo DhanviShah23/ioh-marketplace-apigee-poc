@@ -54,10 +54,23 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
         if: steps.detect.outputs.has_specs == 'true' && vars.GOVERNANCE_SVC_URL != ''
 
+      # `gcloud auth print-identity-token --audiences=...` does not work
+      # with a WIF-impersonated service account credential (returns
+      # "Invalid account type" and prints nothing) — call the IAM
+      # Credentials API's generateIdToken directly with an access token
+      # instead, which works fine with this credential type.
       - name: Get an identity token scoped to api-governance-svc
         id: idtoken
         if: steps.detect.outputs.has_specs == 'true' && vars.GOVERNANCE_SVC_URL != ''
-        run: echo "token=$(gcloud auth print-identity-token --audiences=${{ vars.GOVERNANCE_SVC_URL }})" >> "$GITHUB_OUTPUT"
+        run: |
+          ACCESS_TOKEN=$(gcloud auth print-access-token)
+          ID_TOKEN=$(curl -s -X POST \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"audience\":\"${{ vars.GOVERNANCE_SVC_URL }}\",\"includeEmail\":true}" \
+            "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/ioh-api-governance-svc@se-ps1-appdev.iam.gserviceaccount.com:generateIdToken" \
+            | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>process.stdout.write(JSON.parse(d).token))')
+          echo "token=$ID_TOKEN" >> "$GITHUB_OUTPUT"
 
       - name: Register each changed spec with api-governance-svc
         if: steps.detect.outputs.has_specs == 'true'
