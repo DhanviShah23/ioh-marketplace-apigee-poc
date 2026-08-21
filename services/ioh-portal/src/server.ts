@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import type { Config } from "./config.js";
 import { validateApiId } from "./validate.js";
 import { getBranchHeadSha, createBranch, getFileSha, putFile, openPullRequest } from "./github.js";
+import { catalogClient } from "./catalogClient.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -16,6 +17,54 @@ export function buildServer(config: Config) {
   });
 
   app.get("/health", async () => ({ status: "ok" }));
+
+  // Marketplace proxy routes: the browser talks to ioh-portal only;
+  // ioh-portal authenticates to the private commercial-catalog-svc
+  // server-side, so no backend service other than this one is public.
+  app.get("/api/bundles", async (req, reply) => {
+    const { status } = req.query as { status?: string };
+    try {
+      return await catalogClient.listBundles(config, status);
+    } catch (err) {
+      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get("/api/bundles/:bundleId", async (req, reply) => {
+    const { bundleId } = req.params as { bundleId: string };
+    try {
+      return await catalogClient.getBundle(config, bundleId);
+    } catch (err) {
+      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post("/api/bundles/:bundleId/subscriptions", async (req, reply) => {
+    const { bundleId } = req.params as { bundleId: string };
+    try {
+      return await catalogClient.subscribe(config, bundleId, req.body);
+    } catch (err) {
+      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post("/api/bundles/:bundleId/approve", async (req, reply) => {
+    const { bundleId } = req.params as { bundleId: string };
+    try {
+      return await catalogClient.approve(config, bundleId, req.body);
+    } catch (err) {
+      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post("/api/bundles/:bundleId/reject", async (req, reply) => {
+    const { bundleId } = req.params as { bundleId: string };
+    try {
+      return await catalogClient.reject(config, bundleId, req.body);
+    } catch (err) {
+      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
 
   app.post("/spec-submissions", async (req, reply) => {
     const body = req.body as {

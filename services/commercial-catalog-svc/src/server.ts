@@ -8,6 +8,54 @@ export function buildServer(pool: pg.Pool, config: Config) {
 
   app.get("/health", async () => ({ status: "ok" }));
 
+  // Bundles with their latest approval status and tiers. ?status=PUBLISHED
+  // for the catalog, ?status=PENDING_APPROVAL for the approvals queue.
+  app.get("/bundles", async (req) => {
+    const { status } = req.query as { status?: string };
+    const latestPerBundle = await pool.query(`
+      SELECT DISTINCT ON (b.bundle_id) b.*, pv.id AS product_version_id, pv.version_number, pv.published_at
+      FROM bundle b
+      JOIN product_version pv ON pv.bundle_id = b.bundle_id
+      ORDER BY b.bundle_id, pv.version_number DESC
+    `);
+
+    const withStatus = await Promise.all(
+      latestPerBundle.rows.map(async (b) => {
+        const approval = (await pool.query(
+          `SELECT * FROM bundle_approval WHERE product_version_id = $1 ORDER BY id DESC LIMIT 1`,
+          [b.product_version_id]
+        )).rows[0];
+        return { ...b, latest_status: approval?.status ?? null };
+      })
+    );
+
+    const filtered = status === "PUBLISHED"
+      ? withStatus.filter((r) => r.published_at)
+      : status
+      ? withStatus.filter((r) => r.latest_status === status)
+      : withStatus;
+
+    const withTiers = await Promise.all(
+      filtered.map(async (b) => {
+        const tiers = await pool.query(`SELECT * FROM offer_version WHERE product_version_id = $1 ORDER BY id`, [b.product_version_id]);
+        const apis = await pool.query(`SELECT api_id FROM bundle_asset WHERE bundle_id = $1`, [b.bundle_id]);
+        return { ...b, tiers: tiers.rows, api_ids: apis.rows.map((r) => r.api_id) };
+      })
+    );
+    return { bundles: withTiers };
+  });
+
+  app.get("/bundles/:bundleId", async (req, reply) => {
+    const { bundleId } = req.params as { bundleId: string };
+    const pv = await latestProductVersion(pool, bundleId);
+    if (!pv) return reply.code(404).send({ error: "bundle not found" });
+    const bundle = (await pool.query(`SELECT * FROM bundle WHERE bundle_id = $1`, [bundleId])).rows[0];
+    const tiers = (await pool.query(`SELECT * FROM offer_version WHERE product_version_id = $1 ORDER BY id`, [pv.id])).rows;
+    const apis = (await pool.query(`SELECT api_id FROM bundle_asset WHERE bundle_id = $1`, [bundleId])).rows.map((r) => r.api_id);
+    const approvals = (await pool.query(`SELECT * FROM bundle_approval WHERE product_version_id = $1 ORDER BY id`, [pv.id])).rows;
+    return { bundle, product_version: pv, tiers, api_ids: apis, approvals };
+  });
+
   // Registers the real Apigee developer/app you created manually for this
   // org_id/app_id, so future subscriptions attach products to that exact
   // app rather than a synthesized one. Call this once per app.
