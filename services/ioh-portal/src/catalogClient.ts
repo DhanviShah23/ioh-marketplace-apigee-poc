@@ -30,6 +30,9 @@ export const catalogClient = {
     call(config, `/bundles/${bundleId}/reject`, { method: "POST", body: JSON.stringify(payload) }),
   subscribe: (config: Config, bundleId: string, payload: unknown) =>
     call(config, `/bundles/${bundleId}/subscriptions`, { method: "POST", body: JSON.stringify(payload) }),
+  getSubscription: (config: Config, subscriptionId: string) => call(config, `/subscriptions/${subscriptionId}`),
+  retrySubscription: (config: Config, subscriptionId: string) =>
+    call(config, `/subscriptions/${subscriptionId}/retry`, { method: "POST" }),
   syncApiAssetRef: (config: Config, apiId: string) =>
     call(config, `/api-asset-refs/sync`, { method: "POST", body: JSON.stringify({ api_id: apiId }) }),
 };

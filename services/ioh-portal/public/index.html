@@ -448,17 +448,55 @@
           });
           const body = await res.json();
           if (!res.ok) throw new Error(body.error || `request failed (${res.status})`);
-          note.textContent = `Subscription ${body.subscription.status} — real-time Apigee product created and attached.`;
-          note.className = 'result-note ok';
+          pollSubscription(body.subscription.id, note, btn);
         } catch (err) {
           note.textContent = err instanceof Error ? err.message : String(err);
           note.className = 'result-note err';
-        } finally {
           note.setAttribute('data-shown', 'true');
           btn.disabled = false;
           btn.textContent = 'Subscribe';
         }
       });
+
+      // Provisioning is async now (outbox worker does the real Apigee work
+      // in the background) — poll the subscription's status until it lands
+      // on ACTIVE or FAILED, then show a Retry button on failure.
+      async function pollSubscription(subscriptionId, note, btn) {
+        btn.innerHTML = '<span class="spinner"></span> Provisioning…';
+        note.textContent = 'Subscription accepted — provisioning the Apigee product in the background…';
+        note.className = 'result-note';
+        note.setAttribute('data-shown', 'true');
+
+        const deadline = Date.now() + 30000;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const res = await fetch(`/api/subscriptions/${subscriptionId}`);
+          if (!res.ok) continue;
+          const { subscription } = await res.json();
+          if (subscription.status === 'ACTIVE') {
+            note.textContent = 'Subscription ACTIVE — real Apigee product created and attached.';
+            note.className = 'result-note ok';
+            btn.disabled = false;
+            btn.textContent = 'Subscribe';
+            return;
+          }
+          if (subscription.status === 'FAILED') {
+            note.innerHTML = 'Provisioning FAILED after repeated attempts. <button class="btn" id="retry-sub-btn" style="margin-left:8px;">Retry</button>';
+            note.className = 'result-note err';
+            btn.disabled = false;
+            btn.textContent = 'Subscribe';
+            document.getElementById('retry-sub-btn').addEventListener('click', async () => {
+              await fetch(`/api/subscriptions/${subscriptionId}/retry`, { method: 'POST' });
+              pollSubscription(subscriptionId, note, btn);
+            });
+            return;
+          }
+        }
+        note.textContent = `Still provisioning after 30s (status: last known PENDING/PRODUCT_CREATED) — refresh to check again.`;
+        note.className = 'result-note';
+        btn.disabled = false;
+        btn.textContent = 'Subscribe';
+      }
     } catch (err) {
       container.innerHTML = `<p style="color:var(--critical);">${err instanceof Error ? err.message : err}</p>`;
     }

@@ -15,6 +15,13 @@ export interface Config {
   // calls go out unauthenticated (fine for a local, unauthenticated dev
   // instance).
   governanceSvcInvokerSa?: string;
+  // Pub/Sub topic the outbox worker publishes to for the
+  // 'commercial-to-search-sub' target (DESIGN.md §9.11).
+  pubsubSearchSyncTopic?: string;
+  gcpProjectId?: string;
+  // Outbox jobs (e.g. apigee-provisioning) retry up to this many times
+  // before the worker marks them FAILED and stops picking them up.
+  outboxMaxAttempts: number;
 }
 
 export function loadConfig(): Config {
@@ -27,10 +34,13 @@ export function loadConfig(): Config {
   const governanceSvcUrl = process.env.GOVERNANCE_SVC_URL ?? "http://localhost:4101";
   const outboxPollIntervalMs = Number(process.env.OUTBOX_POLL_INTERVAL_MS ?? "3000");
   const governanceSvcInvokerSa = process.env.GOVERNANCE_SVC_INVOKER_SA;
+  const pubsubSearchSyncTopic = process.env.PUBSUB_SEARCH_SYNC_TOPIC;
+  const gcpProjectId = process.env.GCP_PROJECT_ID ?? process.env.GOOGLE_CLOUD_PROJECT;
+  const outboxMaxAttempts = Number(process.env.OUTBOX_MAX_ATTEMPTS ?? "5");
 
   if (!databaseUrl && !cloudSqlInstanceConnectionName) {
     throw new Error("either DATABASE_URL or INSTANCE_CONNECTION_NAME (+ DB_USER/DB_PASSWORD/DB_NAME) is required");
   }
 
-  return { port, databaseUrl, cloudSqlInstanceConnectionName, dbUser, dbPassword, dbName, governanceSvcUrl, outboxPollIntervalMs, governanceSvcInvokerSa };
+  return { port, databaseUrl, cloudSqlInstanceConnectionName, dbUser, dbPassword, dbName, governanceSvcUrl, outboxPollIntervalMs, governanceSvcInvokerSa, pubsubSearchSyncTopic, gcpProjectId, outboxMaxAttempts };
 }

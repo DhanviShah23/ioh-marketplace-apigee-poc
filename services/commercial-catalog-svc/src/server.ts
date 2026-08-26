@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import type pg from "pg";
 import type { Config } from "./config.js";
-import { createApigeeProduct, attachAppToProduct, authHeaders } from "./governanceClient.js";
+import { authHeaders } from "./governanceClient.js";
 
 export function buildServer(pool: pg.Pool, config: Config) {
   const app = Fastify({ logger: true });
@@ -228,6 +228,12 @@ export function buildServer(pool: pg.Pool, config: Config) {
       return reply.code(409).send({ error: `app_id "${body.app_id}" is not registered — call POST /subscriber-apps first with its real Apigee developer email and app name` });
     }
 
+    // Fully async: this handler only ever writes the subscription (PENDING)
+    // and an 'apigee-provisioning' outbox row, in one transaction, then
+    // returns. The outbox worker is the only thing that ever calls Apigee
+    // for a subscription — see outboxWorker.ts's provisionApigee. This keeps
+    // the request path fast and makes provisioning retryable independent of
+    // this HTTP call's lifetime.
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -238,40 +244,58 @@ export function buildServer(pool: pg.Pool, config: Config) {
       );
       await client.query(
         `INSERT INTO outbox_event (aggregate_type, aggregate_id, event_type, payload, target)
-         VALUES ('subscription', $1, 'SubscriptionActivated', $2, 'commercial-to-search-sub')`,
+         VALUES ('subscription', $1, 'SubscriptionRequested', $2, 'apigee-provisioning')`,
         [String(sub.rows[0].id), JSON.stringify(sub.rows[0])]
       );
       await client.query("COMMIT");
-      let subscription = sub.rows[0];
+      return reply.code(202).send({ subscription: sub.rows[0] });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      client.release();
+    }
+  });
 
-      // Real-time trigger: the Apigee product for this tier is created here,
-      // lazily, on the first actual subscription — not at bundle-approval
-      // time. Idempotent: a second subscriber to the same tier reuses the
-      // product api-governance-svc already created (DESIGN.md §9 step 8).
-      try {
-        const offer = (await pool.query(`SELECT * FROM offer_version WHERE id = $1`, [body.offer_version_id])).rows[0];
-        const apiIds = (await pool.query<{ api_id: string }>(`SELECT api_id FROM bundle_asset WHERE bundle_id = $1`, [bundleId])).rows.map((r) => r.api_id);
+  app.get("/subscriptions/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const sub = (await pool.query(`SELECT * FROM subscription WHERE id = $1`, [id])).rows[0];
+    if (!sub) return reply.code(404).send({ error: "subscription not found" });
+    return { subscription: sub };
+  });
 
-        const productResp = await createApigeeProduct(config, {
-          bundle_id: bundleId,
-          offer_version_id: offer.id,
-          tier_name: offer.tier_name,
-          quota_limit: offer.quota_limit,
-          quota_interval: offer.quota_interval,
-          api_ids: apiIds,
-        });
-        await pool.query(`UPDATE subscription SET status = 'PRODUCT_CREATED' WHERE id = $1`, [subscription.id]);
-
-        await attachAppToProduct(config, productResp.apigee_product.id, subscriberApp.apigee_developer_email, subscriberApp.apigee_app_name);
-        const activated = await pool.query(`UPDATE subscription SET status = 'ACTIVE' WHERE id = $1 RETURNING *`, [subscription.id]);
-        subscription = activated.rows[0];
-      } catch (err) {
-        app.log.error(err);
-        // Leave the subscription at its last-reached status — resilient to
-        // this synchronous call failing; a reconciliation pass can retry.
+  // Resets a FAILED subscription back to PENDING and re-enqueues its
+  // provisioning job with a fresh attempt count, so the outbox worker picks
+  // it up again on the next poll.
+  app.post("/subscriptions/:id/retry", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const sub = (await client.query(`SELECT * FROM subscription WHERE id = $1 FOR UPDATE`, [id])).rows[0];
+      if (!sub) {
+        await client.query("ROLLBACK");
+        return reply.code(404).send({ error: "subscription not found" });
       }
-
-      return reply.code(201).send({ subscription });
+      if (sub.status !== "FAILED") {
+        await client.query("ROLLBACK");
+        return reply.code(409).send({ error: `cannot retry while status is ${sub.status}` });
+      }
+      const updated = await client.query(`UPDATE subscription SET status = 'PENDING' WHERE id = $1 RETURNING *`, [id]);
+      const requeued = await client.query(
+        `UPDATE outbox_event SET status = 'PENDING', attempts = 0
+         WHERE aggregate_type = 'subscription' AND aggregate_id = $1 AND target = 'apigee-provisioning' AND status = 'FAILED'`,
+        [id]
+      );
+      if (requeued.rowCount === 0) {
+        await client.query(
+          `INSERT INTO outbox_event (aggregate_type, aggregate_id, event_type, payload, target)
+           VALUES ('subscription', $1, 'SubscriptionRequested', $2, 'apigee-provisioning')`,
+          [id, JSON.stringify(updated.rows[0])]
+        );
+      }
+      await client.query("COMMIT");
+      return { subscription: updated.rows[0] };
     } catch (err) {
       await client.query("ROLLBACK");
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });

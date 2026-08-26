@@ -42,7 +42,26 @@ export function buildServer(config: Config) {
   app.post("/api/bundles/:bundleId/subscriptions", async (req, reply) => {
     const { bundleId } = req.params as { bundleId: string };
     try {
-      return await catalogClient.subscribe(config, bundleId, req.body);
+      const result = await catalogClient.subscribe(config, bundleId, req.body);
+      return reply.code(202).send(result);
+    } catch (err) {
+      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get("/api/subscriptions/:subscriptionId", async (req, reply) => {
+    const { subscriptionId } = req.params as { subscriptionId: string };
+    try {
+      return await catalogClient.getSubscription(config, subscriptionId);
+    } catch (err) {
+      return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.post("/api/subscriptions/:subscriptionId/retry", async (req, reply) => {
+    const { subscriptionId } = req.params as { subscriptionId: string };
+    try {
+      return await catalogClient.retrySubscription(config, subscriptionId);
     } catch (err) {
       return reply.code(502).send({ error: err instanceof Error ? err.message : String(err) });
     }

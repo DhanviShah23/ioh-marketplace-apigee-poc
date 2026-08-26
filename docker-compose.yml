@@ -72,6 +72,11 @@ services:
       DATABASE_URL: postgres://iohcat:iohcat_dev_password@postgres-catalog:5432/commercial_catalog
       GOVERNANCE_SVC_URL: http://api-governance-svc:4101
       OUTBOX_POLL_INTERVAL_MS: "3000"
+      PUBSUB_SEARCH_SYNC_TOPIC: commercial-to-search-sub
+      GCP_PROJECT_ID: se-ps1-appdev
+      GOOGLE_APPLICATION_CREDENTIALS: /var/secrets/adc.json
+    volumes:
+      - ${HOME}/.config/gcloud/application_default_credentials.json:/var/secrets/adc.json:ro
     ports:
       - "4102:4102"
 
