@@ -1,0 +1,55 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Customer Loyalty & Rewards API",
+    "description": "Manage customer loyalty point balances and redemptions.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "IOH Platform Team",
+      "email": "platform@ioh.example.com"
+    },
+    "x-ioh-api-id": "customer-loyalty-rewards"
+  },
+  "servers": [
+    {
+      "url": "https://httpbin.org/anything/v1"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Loyalty",
+      "description": "Loyalty point operations"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "apikey"
+      }
+    }
+  },
+  "paths": {
+    "/anything/loyalty/points": {
+      "get": {
+        "summary": "Get a customer's current loyalty points balance",
+        "description": "Returns the current loyalty point balance for the authenticated customer.",
+        "operationId": "getLoyaltyPoints",
+        "tags": [
+          "Loyalty"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current points balance"
+          }
+        }
+      }
+    }
+  }
+}
