@@ -107,8 +107,13 @@ function buildProxyBundleXml(opts: {
 
   // countRef/ref pull the matched API product's quota fields at runtime —
   // this is the "quota passed as a flow variable from the bundle" mechanism.
+  // Identifier scopes the counter itself per consumer key (i.e. per
+  // subscriber app) — without it, Apigee falls back to a single "_default"
+  // bucket shared by every caller of this proxy, pooling usage across
+  // different subscribers instead of isolating it per app.
   const quotaPolicyXml = `<?xml version="1.0" encoding="UTF-8"?>
 <Quota name="Quota-Check">
+  <Identifier ref="verifyapikey.Verify-API-Key.client_id"/>
   <Allow countRef="verifyapikey.Verify-API-Key.apiproduct.developer.quota.limit">1000</Allow>
   <Interval ref="verifyapikey.Verify-API-Key.apiproduct.developer.quota.interval">1</Interval>
   <TimeUnit ref="verifyapikey.Verify-API-Key.apiproduct.developer.quota.timeunit">month</TimeUnit>
