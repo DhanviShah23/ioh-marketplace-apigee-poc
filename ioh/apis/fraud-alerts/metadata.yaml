@@ -1,0 +1,7 @@
+api_id: fraud-alerts
+namespace: risk
+origin: IOH
+owning_domain: risk
+vendor_org_id: null
+lifecycle_status: ACTIVE
+created_by: dhanvi.shah@searce.com

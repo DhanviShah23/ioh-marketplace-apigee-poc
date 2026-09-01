@@ -1,0 +1,31 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Fraud Alerts API",
+    "description": "Query real-time fraud alert signals for a transaction.",
+    "version": "1.0.0",
+    "contact": { "name": "IOH Platform Team", "email": "platform@ioh.example.com" },
+    "x-ioh-api-id": "fraud-alerts"
+  },
+  "servers": [{ "url": "https://httpbin.org/anything/v1" }],
+  "tags": [{ "name": "Fraud", "description": "Fraud signal operations" }],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": { "type": "apiKey", "in": "query", "name": "apikey" }
+    }
+  },
+  "paths": {
+    "/anything/fraud/alerts": {
+      "get": {
+        "summary": "Get active fraud alerts for a transaction",
+        "description": "Returns active fraud alert signals for the given transaction context.",
+        "operationId": "getFraudAlerts",
+        "tags": ["Fraud"],
+        "security": [{ "ApiKeyAuth": [] }],
+        "responses": {
+          "200": { "description": "Active fraud alerts" }
+        }
+      }
+    }
+  }
+}
