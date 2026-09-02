@@ -1,0 +1,27 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Shipment Tracking API",
+    "description": "Track shipment status and location for a customer's orders.",
+    "version": "1.0.0",
+    "contact": { "name": "IOH Platform Team", "email": "platform@ioh.example.com" },
+    "x-ioh-api-id": "shipment-tracking"
+  },
+  "servers": [{ "url": "https://httpbin.org/anything/v1" }],
+  "tags": [{ "name": "Shipping", "description": "Shipment tracking operations" }],
+  "components": {
+    "securitySchemes": { "ApiKeyAuth": { "type": "apiKey", "in": "query", "name": "apikey" } }
+  },
+  "paths": {
+    "/anything/shipments/status": {
+      "get": {
+        "summary": "Get shipment status",
+        "description": "Returns the current status and location for a shipment.",
+        "operationId": "getShipmentStatus",
+        "tags": ["Shipping"],
+        "security": [{ "ApiKeyAuth": [] }],
+        "responses": { "200": { "description": "Shipment status" } }
+      }
+    }
+  }
+}

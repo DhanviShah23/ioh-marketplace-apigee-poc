@@ -1,0 +1,7 @@
+api_id: shipment-tracking
+namespace: logistics
+origin: IOH
+owning_domain: logistics
+vendor_org_id: null
+lifecycle_status: ACTIVE
+created_by: dhanvi.shah@searce.com
