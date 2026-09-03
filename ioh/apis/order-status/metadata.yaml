@@ -1,0 +1,7 @@
+api_id: order-status
+namespace: orders
+origin: IOH
+owning_domain: orders
+vendor_org_id: null
+lifecycle_status: ACTIVE
+created_by: dhanvi.shah@searce.com

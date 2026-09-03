@@ -1,0 +1,27 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Order Status API",
+    "description": "Look up the current fulfillment status of a customer order.",
+    "version": "1.0.0",
+    "contact": { "name": "IOH Platform Team", "email": "platform@ioh.example.com" },
+    "x-ioh-api-id": "order-status"
+  },
+  "servers": [{ "url": "https://httpbin.org/anything/v1" }],
+  "tags": [{ "name": "Orders", "description": "Order status operations" }],
+  "components": {
+    "securitySchemes": { "ApiKeyAuth": { "type": "apiKey", "in": "query", "name": "apikey" } }
+  },
+  "paths": {
+    "/anything/orders/status": {
+      "get": {
+        "summary": "Get order status",
+        "description": "Returns the current fulfillment status for an order.",
+        "operationId": "getOrderStatus",
+        "tags": ["Orders"],
+        "security": [{ "ApiKeyAuth": [] }],
+        "responses": { "200": { "description": "Order status" } }
+      }
+    }
+  }
+}
